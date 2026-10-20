@@ -5,19 +5,22 @@
   "main": "index.js",
   "scripts": {
     "dev": "ts-node src/server.ts",
-    "start": "ts-node src/server.ts"
+    "build": "tsc",
+    "start": "node dist/server.js"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@types/pg": "^8.23.1",
     "cloudinary": "^1.41.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "multer": "^2.4.0",
     "multer-storage-cloudinary": "^4.0.0",
+    "pg": "^8.23.1",
     "socket.io": "^4.8.3"
   },
   "devDependencies": {
