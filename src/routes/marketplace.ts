@@ -1,6 +1,7 @@
 import { Router, Request, Response } from "express";
 import { getDb, saveDb } from "../db";
 import { Product, Service } from "../types";
+import { uploadUrlOrBase64ToCloudinary } from "../lib/cloudinary";
 
 export const marketplaceRouter = Router();
 
@@ -29,10 +30,20 @@ marketplaceRouter.get("/products/:id", async (req: Request, res: Response) => {
 });
 
 // Add new Product (for handlers / business users)
-marketplaceRouter.post("/products", async (req: Request, res: Response) => {
+marketplaceRouter.post("/products", async (req: Request, res: Response): Promise<any> => {
   try {
-    const { title, price, category, image, description, sellerId } = req.body;
+    let { title, price, category, image, description, sellerId } = req.body;
     const db = await getDb();
+
+    // If image is base64, upload to Cloudinary
+    if (image && image.startsWith("data:")) {
+      try {
+        const up = await uploadUrlOrBase64ToCloudinary(image, "animaltok/products", "image");
+        image = up.secure_url;
+      } catch (err) {
+        console.warn("Cloudinary product image upload error:", err);
+      }
+    }
 
     const user = db.users[sellerId || "u_1"];
 
@@ -57,9 +68,9 @@ marketplaceRouter.post("/products", async (req: Request, res: Response) => {
     db.products[productId] = newProduct;
     await saveDb(db);
 
-    res.status(201).json(newProduct);
+    return res.status(201).json(newProduct);
   } catch (err) {
-    res.status(500).json({ error: "Failed to add product" });
+    return res.status(500).json({ error: "Failed to add product" });
   }
 });
 
@@ -84,5 +95,47 @@ marketplaceRouter.get("/services/:id", async (req: Request, res: Response) => {
     res.json(service);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch service" });
+  }
+});
+
+// Add new Service
+marketplaceRouter.post("/services", async (req: Request, res: Response): Promise<any> => {
+  try {
+    let { title, price, category, image, description, providerId, location } = req.body;
+    const db = await getDb();
+
+    if (image && image.startsWith("data:")) {
+      try {
+        const up = await uploadUrlOrBase64ToCloudinary(image, "animaltok/services", "image");
+        image = up.secure_url;
+      } catch (err) {
+        console.warn("Cloudinary service image upload error:", err);
+      }
+    }
+
+    const user = db.users[providerId || "u_1"];
+    const serviceId = `srv_${Date.now()}`;
+    const newService: Service = {
+      id: serviceId,
+      title: title || "Pet Service",
+      price: price ? String(price) : "$30",
+      category: category || "Care",
+      image: image || "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=500&auto=format&fit=crop&q=80",
+      rating: 5.0,
+      reviewsCount: 1,
+      description: description || "Professional pet service.",
+      providerName: user ? user.name : "Verified Provider",
+      providerAvatar: user ? user.avatar : "🐾",
+      location: location || "Austin, TX",
+      contactEmail: user?.email || "contact@animaltok.com",
+      approvalStatus: "pending"
+    };
+
+    db.services[serviceId] = newService;
+    await saveDb(db);
+
+    return res.status(201).json(newService);
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to add service" });
   }
 });

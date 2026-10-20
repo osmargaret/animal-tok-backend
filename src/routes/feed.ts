@@ -2,6 +2,7 @@ import { Router, Request, Response } from "express";
 import { getDb, saveDb } from "../db";
 import { Server } from "socket.io";
 import { Post, PostComment } from "../types";
+import { uploadUrlOrBase64ToCloudinary } from "../lib/cloudinary";
 
 export function createFeedRouter(io: Server) {
   const router = Router();
@@ -20,8 +21,28 @@ export function createFeedRouter(io: Server) {
   // Create new Post
   router.post("/", async (req: Request, res: Response) => {
     try {
-      const { animalId, caption, videoUrl, imageUrl, tags, audioUrl, audioName } = req.body;
+      let { animalId, caption, videoUrl, imageUrl, tags, audioUrl, audioName } = req.body;
       const db = await getDb();
+
+      // If media is base64, automatically upload to Cloudinary
+      if (videoUrl && videoUrl.startsWith("data:")) {
+        try {
+          const up = await uploadUrlOrBase64ToCloudinary(videoUrl, "animaltok/posts", "video");
+          videoUrl = up.secure_url;
+          if (!imageUrl) imageUrl = up.secure_url;
+        } catch (err) {
+          console.warn("Cloudinary video base64 upload error:", err);
+        }
+      }
+
+      if (imageUrl && imageUrl.startsWith("data:")) {
+        try {
+          const up = await uploadUrlOrBase64ToCloudinary(imageUrl, "animaltok/posts", "image");
+          imageUrl = up.secure_url;
+        } catch (err) {
+          console.warn("Cloudinary image base64 upload error:", err);
+        }
+      }
       
       const animal = db.animals[animalId || "1"] || {
         id: animalId || "1",

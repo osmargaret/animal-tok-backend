@@ -90,5 +90,32 @@ export function createAnimalsRouter(io: Server) {
     }
   });
 
+  // Update animal profile (photos, avatar, coverImage, bio, etc.)
+  router.put("/:id", async (req: Request, res: Response): Promise<any> => {
+    try {
+      const id = String(req.params.id);
+      const db = await getDb();
+      const animal = db.animals[id];
+      if (!animal) return res.status(404).json({ error: "Animal profile not found" });
+
+      const { name, username, bio, breed, age, location, avatar, coverImage, photos } = req.body;
+      if (name) animal.name = name;
+      if (username) animal.username = username;
+      if (bio !== undefined) animal.bio = bio;
+      if (breed) animal.breed = breed;
+      if (age) animal.age = age;
+      if (location) animal.location = location;
+      if (avatar) animal.avatar = avatar;
+      if (coverImage) animal.coverImage = coverImage;
+      if (photos && Array.isArray(photos)) animal.photos = photos;
+
+      await saveDb(db);
+      io.emit("animal_updated", animal);
+      return res.json(animal);
+    } catch (err) {
+      return res.status(500).json({ error: "Failed to update animal profile" });
+    }
+  });
+
   return router;
 }
