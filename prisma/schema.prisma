@@ -1,0 +1,72 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(uuid())
+  name           String
+  username       String          @unique
+  avatar         String?
+  bio            String?
+  followersCount Int             @default(0)
+  followingCount Int             @default(0)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  // Relations
+  animals        AnimalProfile[]
+  follows        Follow[]        @relation("UserFollows")
+  messagesSent   Message[]       @relation("MessagesSent")
+}
+
+model AnimalProfile {
+  id            String    @id @default(uuid())
+  name          String
+  username      String    @unique
+  avatar        String?
+  breed         String?
+  age           String?
+  location      String?
+  bio           String?
+  followerCount Int       @default(0)
+  coverImage    String?
+  photos        String    // JSON string array for simplicity in sqlite
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  handlerId     String
+  handler       User      @relation(fields: [handlerId], references: [id])
+  followers     Follow[]  @relation("AnimalFollowers")
+}
+
+model Follow {
+  id         String   @id @default(uuid())
+  followerId String
+  animalId   String
+  createdAt  DateTime @default(now())
+
+  // Relations
+  follower   User           @relation("UserFollows", fields: [followerId], references: [id])
+  animal     AnimalProfile  @relation("AnimalFollowers", fields: [animalId], references: [id])
+
+  @@unique([followerId, animalId]) // A user can only follow an animal once
+}
+
+model Message {
+  id        String   @id @default(uuid())
+  text      String
+  senderId  String
+  threadId  String
+  createdAt DateTime @default(now())
+
+  sender    User     @relation("MessagesSent", fields: [senderId], references: [id])
+}
