@@ -16,6 +16,7 @@ import { createNotificationsRouter } from "./routes/notifications";
 import { createMessagesRouter } from "./routes/messages";
 import { adminRouter } from "./routes/admin";
 import { uploadRouter } from "./routes/upload";
+import { paymentsRouter } from "./routes/payments";
 
 dotenv.config();
 
@@ -100,6 +101,7 @@ app.use("/api/notifications", createNotificationsRouter(io));
 app.use("/api/messages", createMessagesRouter(io));
 app.use("/api/admin", adminRouter);
 app.use("/api/upload", uploadRouter);
+app.use("/api/payments", paymentsRouter);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
