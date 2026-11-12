@@ -63,11 +63,12 @@ marketplaceRouter.post("/products", async (req: Request, res: Response): Promise
       rating: 5.0,
       reviewsCount: 1,
       description: description || "Quality item for your pet.",
-      sellerId: user ? user.id : "u_1",
-      sellerName: user ? user.name : "Verified Seller",
+      sellerId: user ? user.id : (sellerId || "u_1"),
+      sellerName: user ? (user.businessName || user.clinicName || user.name) : "Verified Seller",
       sellerAvatar: user ? user.avatar : "🐾",
       inStock: true,
-      tags: [category || "PetCare"]
+      tags: [category || "PetCare"],
+      approvalStatus: "approved"
     };
 
     db.products[productId] = newProduct;
@@ -128,17 +129,18 @@ marketplaceRouter.post("/services", async (req: Request, res: Response): Promise
     const newService: Service = {
       id: serviceId,
       title: title || "Pet Service",
-      price: price ? String(price) : "$30",
+      price: price ? (String(price).startsWith("$") ? String(price) : `$${price}`) : "$30",
       category: category || "Care",
       image: image || "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=500&auto=format&fit=crop&q=80",
       rating: 5.0,
       reviewsCount: 1,
       description: description || "Professional pet service.",
-      providerName: user ? user.name : "Verified Provider",
+      providerId: user ? user.id : (providerId || "u_1"),
+      providerName: user ? (user.clinicName || user.businessName || user.name) : "Verified Provider",
       providerAvatar: user ? user.avatar : "🐾",
       location: location || "Austin, TX",
       contactEmail: user?.email || "contact@animaltok.com",
-      approvalStatus: "pending"
+      approvalStatus: "approved"
     };
 
     db.services[serviceId] = newService;
