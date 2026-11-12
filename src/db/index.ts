@@ -30,28 +30,35 @@ async function seedIfEmpty() {
 
 // ─── READ ─────────────────────────────────────────────────────────────────
 
-export async function getDb(): Promise<DatabaseSchema> {
-  await ensureReady();
+let inMemoryDb: DatabaseSchema | null = null;
 
-  const [
-    usersRes, animalsRes, followsRes, postsRes, likesRes, commentsRes,
-    productsRes, servicesRes, eventsRes, notificationsRes, messagesRes,
-    reportsRes, auditLogsRes
-  ] = await Promise.all([
-    query("SELECT * FROM users ORDER BY created_at"),
-    query("SELECT * FROM animals ORDER BY created_at"),
-    query("SELECT * FROM follows"),
-    query("SELECT * FROM posts ORDER BY created_at DESC"),
-    query("SELECT * FROM likes"),
-    query("SELECT * FROM comments ORDER BY created_at"),
-    query("SELECT * FROM products ORDER BY created_at DESC"),
-    query("SELECT * FROM services ORDER BY created_at DESC"),
-    query("SELECT * FROM events ORDER BY created_at"),
-    query("SELECT * FROM notifications ORDER BY created_at DESC"),
-    query("SELECT * FROM messages ORDER BY created_at"),
-    query("SELECT * FROM reports ORDER BY created_at DESC"),
-    query("SELECT * FROM audit_logs ORDER BY created_at DESC"),
-  ]);
+export async function getDb(): Promise<DatabaseSchema> {
+  if (inMemoryDb) {
+    return inMemoryDb;
+  }
+
+  try {
+    await ensureReady();
+
+    const [
+      usersRes, animalsRes, followsRes, postsRes, likesRes, commentsRes,
+      productsRes, servicesRes, eventsRes, notificationsRes, messagesRes,
+      reportsRes, auditLogsRes
+    ] = await Promise.all([
+      query("SELECT * FROM users ORDER BY created_at"),
+      query("SELECT * FROM animals ORDER BY created_at"),
+      query("SELECT * FROM follows"),
+      query("SELECT * FROM posts ORDER BY created_at DESC"),
+      query("SELECT * FROM likes"),
+      query("SELECT * FROM comments ORDER BY created_at"),
+      query("SELECT * FROM products ORDER BY created_at DESC"),
+      query("SELECT * FROM services ORDER BY created_at DESC"),
+      query("SELECT * FROM events ORDER BY created_at"),
+      query("SELECT * FROM notifications ORDER BY created_at DESC"),
+      query("SELECT * FROM messages ORDER BY created_at"),
+      query("SELECT * FROM reports ORDER BY created_at DESC"),
+      query("SELECT * FROM audit_logs ORDER BY created_at DESC"),
+    ]);
 
   // Reconstruct the users dict
   const users: DatabaseSchema["users"] = {};
@@ -195,7 +202,15 @@ export async function getDb(): Promise<DatabaseSchema> {
     details: l.details, timestamp: l.timestamp,
   }));
 
-  return { users, animals, follows, posts, likes, comments, products, services, events, notifications, messages, reports, auditLogs };
+    inMemoryDb = { users, animals, follows, posts, likes, comments, products, services, events, notifications, messages, reports, auditLogs };
+    return inMemoryDb;
+  } catch (err) {
+    console.warn("Neon Postgres fetch failed, using memory/fallback:", err);
+    if (!inMemoryDb) {
+      inMemoryDb = JSON.parse(JSON.stringify(initialDbData));
+    }
+    return inMemoryDb!;
+  }
 }
 
 // ─── WRITE ────────────────────────────────────────────────────────────────
@@ -203,7 +218,11 @@ export async function getDb(): Promise<DatabaseSchema> {
 // saveDb reconstructs diffs and upserts changed rows.
 
 export async function saveDb(data: DatabaseSchema): Promise<void> {
-  await ensureReady();
+  // Sync in-memory cache immediately
+  inMemoryDb = data;
+
+  try {
+    await ensureReady();
 
   // Upsert users
   for (const u of Object.values(data.users)) {
@@ -322,6 +341,17 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
     }
   }
 
+  // Upsert comments (grouped by post_id)
+  for (const postComments of Object.values(data.comments || {})) {
+    for (const c of postComments) {
+      await query(`
+        INSERT INTO comments (id, post_id, user_handle, avatar, text, created_at)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        ON CONFLICT (id) DO NOTHING
+      `, [c.id, c.postId, c.user, c.avatar, c.text, (c as any).createdAt || new Date().toISOString()]);
+    }
+  }
+
   // Upsert messages (flat)
   for (const threadMsgs of Object.values(data.messages || {})) {
     for (const m of threadMsgs) {
@@ -353,6 +383,9 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
 
   // Sync follows table from in-memory follows dict
   // (individual follow/unfollow ops are handled directly in the animals route)
+  } catch (err) {
+    console.warn("Background Neon Postgres sync failed:", err);
+  }
 }
 
 // ─── SEED ─────────────────────────────────────────────────────────────────
