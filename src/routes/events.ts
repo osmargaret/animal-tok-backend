@@ -20,10 +20,24 @@ eventsRouter.get("/", async (req: Request, res: Response) => {
   }
 });
 
-// Create new Event
+// Create new Event (Free or Paid with Escrow)
 eventsRouter.post("/", async (req: Request, res: Response): Promise<any> => {
   try {
-    let { title, date, time, location, category, petType, description, image, organizerId, organizerName } = req.body;
+    let {
+      title,
+      date,
+      time,
+      location,
+      category,
+      petType,
+      description,
+      image,
+      organizerId,
+      organizerName,
+      isPaid,
+      ticketPrice,
+      capacity,
+    } = req.body;
 
     if (!title) {
       return res.status(400).json({ error: "Event title is required." });
@@ -44,6 +58,10 @@ eventsRouter.post("/", async (req: Request, res: Response): Promise<any> => {
     const user = db.users[organizerId || "u_1"];
     const eventId = `evt_${Date.now()}`;
 
+    const numericPrice = typeof ticketPrice === "number"
+      ? ticketPrice
+      : parseFloat(String(ticketPrice || "0").replace(/[^0-9.]/g, "")) || 0;
+
     const newEvent: EventItem = {
       id: eventId,
       title: title.trim(),
@@ -58,6 +76,13 @@ eventsRouter.post("/", async (req: Request, res: Response): Promise<any> => {
       organizerId: organizerId || (user ? user.id : "u_1"),
       organizerName: organizerName || (user ? user.name : "Animandler Host"),
       isAttending: true,
+      isPaid: Boolean(isPaid && numericPrice > 0),
+      ticketPrice: numericPrice > 0 ? `$${numericPrice.toFixed(2)}` : "Free",
+      currency: "$",
+      capacity: capacity ? Number(capacity) : 50,
+      ticketsSold: isPaid ? 1 : 0,
+      escrowStatus: isPaid && numericPrice > 0 ? "held" : "active",
+      status: "upcoming",
     };
 
     db.events[eventId] = newEvent;
@@ -91,5 +116,61 @@ eventsRouter.post("/:id/rsvp", async (req: Request, res: Response) => {
     res.json({ isAttending: event.isAttending, attendeesCount: event.attendeesCount });
   } catch (err) {
     res.status(500).json({ error: "Failed to RSVP" });
+  }
+});
+
+// Cancel Event & Trigger Automated Escrow Refund
+eventsRouter.post("/:id/cancel", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const id = String(req.params.id);
+    const db = await getDb();
+    const event = db.events[id];
+
+    if (!event) return res.status(404).json({ error: "Event not found" });
+
+    event.status = "cancelled";
+    if (event.isPaid) {
+      event.escrowStatus = "refunded";
+    }
+
+    await saveDb(db);
+
+    return res.json({
+      success: true,
+      status: "cancelled",
+      escrowStatus: event.escrowStatus,
+      message: event.isPaid
+        ? `Event cancelled. All ticket holders have been refunded 100% via Escrow.`
+        : `Event cancelled successfully.`,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to cancel event" });
+  }
+});
+
+// Complete Event & Release Escrow Payout to Host
+eventsRouter.post("/:id/complete", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const id = String(req.params.id);
+    const db = await getDb();
+    const event = db.events[id];
+
+    if (!event) return res.status(404).json({ error: "Event not found" });
+
+    event.status = "completed";
+    if (event.isPaid) {
+      event.escrowStatus = "released";
+    }
+
+    await saveDb(db);
+
+    return res.json({
+      success: true,
+      status: "completed",
+      escrowStatus: event.escrowStatus,
+      message: "Event marked completed. Escrow payout scheduled for host.",
+    });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to complete event" });
   }
 });

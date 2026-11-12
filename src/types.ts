@@ -112,6 +112,14 @@ export interface EventItem {
   organizerId?: string;
   organizerName: string;
   isAttending?: boolean;
+  // Escrow & Paid Event fields
+  isPaid?: boolean;
+  ticketPrice?: number | string;
+  currency?: string;
+  capacity?: number;
+  ticketsSold?: number;
+  escrowStatus?: "active" | "held" | "released" | "refunded";
+  status?: "upcoming" | "completed" | "cancelled";
 }
 
 export interface NotificationItem {
