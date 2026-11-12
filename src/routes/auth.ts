@@ -7,7 +7,7 @@ export const authRouter = Router();
 // Register new user & optional animal
 authRouter.post("/register", async (req: Request, res: Response) => {
   try {
-    const { name, username, email, petName, petBreed, petAge, petBio } = req.body;
+    const { name, username, email, accountType, clinicName, specialization, petName, petBreed, petAge, petBio } = req.body;
     
     if (!name || !username || !email) {
       return res.status(400).json({ error: "Name, username, and email are required." });
@@ -15,6 +15,10 @@ authRouter.post("/register", async (req: Request, res: Response) => {
 
     const cleanUsername = username.trim().toLowerCase().replace(/^@/, "");
     const cleanEmail = email.trim().toLowerCase();
+    const resolvedAccountType: 'handler' | 'vet' | 'business' =
+      accountType === 'vet' ? 'vet' : accountType === 'business' ? 'business' : 'handler';
+    const resolvedRole: 'user' | 'vet' | 'business' =
+      resolvedAccountType === 'vet' ? 'vet' : resolvedAccountType === 'business' ? 'business' : 'user';
 
     const db = await getDb();
 
@@ -38,9 +42,14 @@ authRouter.post("/register", async (req: Request, res: Response) => {
       name: name.trim(),
       username: `@${cleanUsername}`,
       email: cleanEmail,
-      avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
-      bio: petBio || `Handler of ${petName || 'pets'}`,
-      role: "user",
+      avatar: resolvedAccountType === 'vet'
+        ? "https://images.unsplash.com/photo-1628015081036-0747ec8f077a?w=150&auto=format&fit=crop&q=80"
+        : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+      bio: petBio || (resolvedAccountType === 'vet' ? `Licensed Veterinarian at ${clinicName || 'Animal Hospital'}` : `Handler of ${petName || 'pets'}`),
+      role: resolvedRole,
+      accountType: resolvedAccountType,
+      clinicName: clinicName?.trim(),
+      specialization: specialization?.trim(),
       status: "active",
       subscriptionPlan: "free",
       animals: [],

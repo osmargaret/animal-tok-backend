@@ -60,6 +60,9 @@ export async function getDb(): Promise<DatabaseSchema> {
       id: u.id, name: u.name, username: u.username, email: u.email,
       avatar: u.avatar, bio: u.bio, role: u.role, status: u.status,
       subscriptionPlan: u.subscription_plan,
+      accountType: u.account_type || (u.role === 'vet' ? 'vet' : u.role === 'business' ? 'business' : 'handler'),
+      clinicName: u.clinic_name || undefined,
+      specialization: u.specialization || undefined,
       animals: u.animals || [],
       pushToken: u.push_token,
       createdAt: u.created_at,
@@ -132,6 +135,7 @@ export async function getDb(): Promise<DatabaseSchema> {
     services[s.id] = {
       id: s.id, title: s.title, providerName: s.provider_name,
       providerAvatar: s.provider_avatar, category: s.category,
+      providerId: s.provider_id || undefined,
       rating: Number(s.rating), reviewsCount: Number(s.reviews_count),
       price: s.price, image: s.image, description: s.description,
       location: s.location, contactEmail: s.contact_email,
@@ -146,6 +150,8 @@ export async function getDb(): Promise<DatabaseSchema> {
       id: e.id, title: e.title, date: e.date, time: e.time,
       location: e.location, image: e.image,
       attendeesCount: Number(e.attendees_count), category: e.category,
+      petType: e.pet_type || 'all',
+      organizerId: e.organizer_id || undefined,
       description: e.description, organizerName: e.organizer_name,
     };
   }
@@ -202,15 +208,18 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
   // Upsert users
   for (const u of Object.values(data.users)) {
     await query(`
-      INSERT INTO users (id, name, username, email, avatar, bio, role, status, subscription_plan, animals, push_token, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+      INSERT INTO users (id, name, username, email, avatar, bio, role, status, subscription_plan, animals, push_token, account_type, clinic_name, specialization, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       ON CONFLICT (id) DO UPDATE SET
         name=EXCLUDED.name, username=EXCLUDED.username, email=EXCLUDED.email,
         avatar=EXCLUDED.avatar, bio=EXCLUDED.bio, role=EXCLUDED.role,
         status=EXCLUDED.status, subscription_plan=EXCLUDED.subscription_plan,
-        animals=EXCLUDED.animals, push_token=COALESCE(EXCLUDED.push_token, users.push_token)
+        animals=EXCLUDED.animals, push_token=COALESCE(EXCLUDED.push_token, users.push_token),
+        account_type=EXCLUDED.account_type, clinic_name=EXCLUDED.clinic_name, specialization=EXCLUDED.specialization
     `, [u.id, u.name, u.username, u.email, u.avatar || null, u.bio || '', u.role || 'user', u.status || 'active',
-        u.subscriptionPlan || 'free', u.animals || [], u.pushToken || null, u.createdAt || new Date().toISOString()]);
+        u.subscriptionPlan || 'free', u.animals || [], u.pushToken || null,
+        u.accountType || (u.role === 'vet' ? 'vet' : u.role === 'business' ? 'business' : 'handler'),
+        u.clinicName || null, u.specialization || null, u.createdAt || new Date().toISOString()]);
   }
 
   // Upsert animals
@@ -271,32 +280,35 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
   for (const s of Object.values(data.services)) {
     await query(`
       INSERT INTO services (id, title, provider_name, provider_avatar, category, rating,
-        reviews_count, price, image, description, location, contact_email, approval_status)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        reviews_count, price, image, description, location, contact_email, approval_status, provider_id)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
       ON CONFLICT (id) DO UPDATE SET
         title=EXCLUDED.title, provider_name=EXCLUDED.provider_name,
         provider_avatar=EXCLUDED.provider_avatar, category=EXCLUDED.category,
         rating=EXCLUDED.rating, reviews_count=EXCLUDED.reviews_count, price=EXCLUDED.price,
         image=EXCLUDED.image, description=EXCLUDED.description, location=EXCLUDED.location,
-        contact_email=EXCLUDED.contact_email, approval_status=EXCLUDED.approval_status
+        contact_email=EXCLUDED.contact_email, approval_status=EXCLUDED.approval_status,
+        provider_id=EXCLUDED.provider_id
     `, [s.id, s.title, s.providerName, s.providerAvatar, s.category, s.rating,
         s.reviewsCount, s.price, s.image, s.description, s.location,
-        s.contactEmail, s.approvalStatus || 'pending']);
+        s.contactEmail, s.approvalStatus || 'pending', s.providerId || null]);
   }
 
   // Upsert events
   for (const e of Object.values(data.events)) {
     await query(`
       INSERT INTO events (id, title, date, time, location, image, attendees_count,
-        category, description, organizer_name)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+        category, description, organizer_name, organizer_id, pet_type)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       ON CONFLICT (id) DO UPDATE SET
         title=EXCLUDED.title, date=EXCLUDED.date, time=EXCLUDED.time,
         location=EXCLUDED.location, image=EXCLUDED.image,
         attendees_count=EXCLUDED.attendees_count, category=EXCLUDED.category,
-        description=EXCLUDED.description, organizer_name=EXCLUDED.organizer_name
+        description=EXCLUDED.description, organizer_name=EXCLUDED.organizer_name,
+        organizer_id=EXCLUDED.organizer_id, pet_type=EXCLUDED.pet_type
     `, [e.id, e.title, e.date, e.time, e.location, e.image,
-        e.attendeesCount, e.category, e.description, e.organizerName]);
+        e.attendeesCount, e.category, e.description, e.organizerName,
+        e.organizerId || null, e.petType || 'all']);
   }
 
   // Upsert notifications (flat)

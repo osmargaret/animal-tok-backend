@@ -5,11 +5,16 @@ import { uploadUrlOrBase64ToCloudinary } from "../lib/cloudinary";
 
 export const marketplaceRouter = Router();
 
-// Get Products
+// Get Products (supports ?sellerId=...)
 marketplaceRouter.get("/products", async (req: Request, res: Response) => {
   try {
+    const { sellerId } = req.query;
     const db = await getDb();
-    res.json(Object.values(db.products));
+    let list = Object.values(db.products);
+    if (sellerId) {
+      list = list.filter((p) => p.sellerId === sellerId);
+    }
+    res.json(list);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch products" });
   }
@@ -74,11 +79,16 @@ marketplaceRouter.post("/products", async (req: Request, res: Response): Promise
   }
 });
 
-// Get Services
+// Get Services (supports ?providerId=...)
 marketplaceRouter.get("/services", async (req: Request, res: Response) => {
   try {
+    const { providerId } = req.query;
     const db = await getDb();
-    res.json(Object.values(db.services));
+    let list = Object.values(db.services);
+    if (providerId) {
+      list = list.filter((s) => s.providerId === providerId);
+    }
+    res.json(list);
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch services" });
   }

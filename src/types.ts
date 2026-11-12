@@ -5,7 +5,10 @@ export interface User {
   email: string;
   avatar: string;
   bio?: string;
-  role: 'user' | 'business' | 'admin';
+  role: 'user' | 'business' | 'admin' | 'vet';
+  accountType?: 'handler' | 'vet' | 'business';
+  clinicName?: string;
+  specialization?: string;
   status?: 'active' | 'suspended' | 'banned';
   subscriptionPlan: 'free' | 'basic' | 'enterprise';
   animals: string[]; // Animal IDs
@@ -80,6 +83,7 @@ export interface Product {
 export interface Service {
   id: string;
   title: string;
+  providerId?: string;
   providerName: string;
   providerAvatar: string;
   category: string;
@@ -102,7 +106,9 @@ export interface EventItem {
   image: string;
   attendeesCount: number;
   category: string;
+  petType?: string;
   description: string;
+  organizerId?: string;
   organizerName: string;
   isAttending?: boolean;
 }

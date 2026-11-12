@@ -26,9 +26,15 @@ export async function runMigrations() {
     )
   `);
 
-  // Ensure push_token exists if users table already existed
+  // Ensure new columns exist safely
   await query(`
     ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS account_type TEXT DEFAULT 'handler';
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS clinic_name TEXT;
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS specialization TEXT;
+    ALTER TABLE services ADD COLUMN IF NOT EXISTS provider_id TEXT;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS organizer_id TEXT;
+    ALTER TABLE events ADD COLUMN IF NOT EXISTS pet_type TEXT DEFAULT 'all';
   `);
 
   // Animal profiles table
