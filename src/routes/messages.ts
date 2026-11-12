@@ -40,29 +40,81 @@ export function createMessagesRouter(io: Server) {
 
         // Find the other participant
         let otherUserId = "";
-        let otherUserName = "Chat Partner";
-        let otherUserAvatar = "🐾";
+        let otherUserName = "";
+        let otherUserAvatar = "";
 
         const otherMsg = msgs.find((m) => m.senderId && m.senderId !== userId);
         if (otherMsg) {
           otherUserId = otherMsg.senderId;
-          otherUserName = otherMsg.senderName || otherUserName;
-          otherUserAvatar = otherMsg.senderAvatar || otherUserAvatar;
-        } else if (lastMsg.recipientId && lastMsg.recipientId !== userId) {
+          otherUserName = otherMsg.senderName || "";
+          otherUserAvatar = otherMsg.senderAvatar || "";
+        }
+
+        // If not found yet, check any message that has recipientName
+        if (!otherUserName) {
+          const msgWithRecipient = msgs.find((m) => m.recipientName);
+          if (msgWithRecipient) {
+            otherUserName = msgWithRecipient.recipientName!;
+            otherUserAvatar = msgWithRecipient.recipientAvatar || otherUserAvatar;
+          }
+        }
+
+        // Check threadMeta
+        if (!otherUserName && db.threadMeta && db.threadMeta[threadId]) {
+          otherUserName = db.threadMeta[threadId].recipientName || "";
+          otherUserAvatar = db.threadMeta[threadId].recipientAvatar || otherUserAvatar;
+          if (!otherUserId) otherUserId = db.threadMeta[threadId].recipientId || "";
+        }
+
+        // Check if lastMsg has recipientId
+        if (!otherUserName && lastMsg.recipientId && lastMsg.recipientId !== userId) {
           otherUserId = lastMsg.recipientId;
           const u = db.users[otherUserId];
           if (u) {
-            otherUserName = u.name;
+            otherUserName = u.businessName || u.clinicName || u.name;
             otherUserAvatar = u.avatar;
           }
-        } else {
-          // If threadId is formatted like t_animalId_userId or animalId
-          const animal = db.animals[threadId.replace(/^t_/, "").split("_")[0]];
+        }
+
+        // If threadId is trade_... or booking_...
+        if (!otherUserName && threadId.startsWith("trade_")) {
+          const raw = threadId.replace(/^trade_/, "").replace(/_/g, " ");
+          otherUserName = raw.replace(/\b\w/g, (c) => c.toUpperCase());
+          const prod = Object.values(db.products || {}).find(
+            (p) => p.sellerName?.toLowerCase() === otherUserName.toLowerCase()
+          );
+          if (prod) {
+            otherUserAvatar = prod.sellerAvatar || prod.image;
+          } else {
+            otherUserAvatar = "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?w=400&fit=crop";
+          }
+        } else if (!otherUserName && threadId.startsWith("booking_")) {
+          const raw = threadId.replace(/^booking_/, "").replace(/_/g, " ");
+          otherUserName = raw.replace(/\b\w/g, (c) => c.toUpperCase());
+          const serv = Object.values(db.services || {}).find(
+            (s) => s.providerName?.toLowerCase() === otherUserName.toLowerCase()
+          );
+          if (serv) {
+            otherUserAvatar = serv.providerAvatar || serv.image;
+          } else {
+            otherUserAvatar = "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=400&fit=crop";
+          }
+        } else if (
+          !otherUserName &&
+          (threadId.startsWith("t_animal_") || threadId.startsWith("animal_") || db.animals[threadId])
+        ) {
+          const animalKey = threadId.replace(/^t_animal_/, "").replace(/^animal_/, "").split("_")[0];
+          const animal = db.animals[animalKey] || db.animals[threadId];
           if (animal) {
             otherUserId = animal.handlerId || animal.id;
-            otherUserName = `${animal.name}'s Handler (${animal.handlerName || "Handler"})`;
-            otherUserAvatar = animal.avatar;
+            otherUserName = animal.handlerName || `${animal.name}'s Handler`;
+            otherUserAvatar = animal.avatar || (animal.photos && animal.photos[0]) || "";
           }
+        }
+
+        if (!otherUserName) {
+          otherUserName = "Pet Partner";
+          otherUserAvatar = "https://images.unsplash.com/photo-1543466835-00a7907e9de1?w=200&fit=crop";
         }
 
         userThreads[threadId] = {
@@ -106,7 +158,16 @@ export function createMessagesRouter(io: Server) {
   // Send message to thread
   router.post("/send", async (req: Request, res: Response) => {
     try {
-      const { threadId, senderId, recipientId, text, senderName, senderAvatar } = req.body;
+      const {
+        threadId,
+        senderId,
+        recipientId,
+        text,
+        senderName,
+        senderAvatar,
+        recipientName,
+        recipientAvatar,
+      } = req.body;
       const db = await getDb();
 
       if (!threadId || !text) {
@@ -125,6 +186,8 @@ export function createMessagesRouter(io: Server) {
         threadId,
         senderId: finalSenderId,
         recipientId: recipientId || undefined,
+        recipientName: recipientName || undefined,
+        recipientAvatar: recipientAvatar || undefined,
         senderName: finalSenderName,
         senderAvatar: finalSenderAvatar,
         text,
@@ -133,6 +196,15 @@ export function createMessagesRouter(io: Server) {
 
       if (!db.messages[threadId]) db.messages[threadId] = [];
       db.messages[threadId].push(newMessage);
+
+      if (!db.threadMeta) db.threadMeta = {};
+      if (recipientName || recipientAvatar || recipientId) {
+        db.threadMeta[threadId] = {
+          recipientId: recipientId || db.threadMeta[threadId]?.recipientId,
+          recipientName: recipientName || db.threadMeta[threadId]?.recipientName,
+          recipientAvatar: recipientAvatar || db.threadMeta[threadId]?.recipientAvatar,
+        };
+      }
 
       // Create a notification for the recipient if recipientId exists and is different from sender
       let notif: NotificationItem | null = null;

@@ -7,6 +7,7 @@ export interface User {
   bio?: string;
   role: 'user' | 'business' | 'admin' | 'vet';
   accountType?: 'handler' | 'vet' | 'business';
+  businessName?: string;
   clinicName?: string;
   specialization?: string;
   status?: 'active' | 'suspended' | 'banned';
@@ -129,6 +130,8 @@ export interface MessageItem {
   threadId: string;
   senderId: string;
   recipientId?: string;
+  recipientName?: string;
+  recipientAvatar?: string;
   senderName: string;
   senderAvatar: string;
   text: string;
@@ -166,6 +169,7 @@ export interface DatabaseSchema {
   events: Record<string, EventItem>;
   notifications: Record<string, NotificationItem[]>; // key: userId
   messages: Record<string, MessageItem[]>; // key: threadId
+  threadMeta?: Record<string, { recipientId?: string; recipientName?: string; recipientAvatar?: string; title?: string }>;
   reports?: Record<string, ReportItem>;
   auditLogs?: AuditLog[];
 }
