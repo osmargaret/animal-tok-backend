@@ -9,6 +9,7 @@ export interface User {
   status?: 'active' | 'suspended' | 'banned';
   subscriptionPlan: 'free' | 'basic' | 'enterprise';
   animals: string[]; // Animal IDs
+  pushToken?: string;
   createdAt: string;
 }
 
@@ -109,17 +110,19 @@ export interface EventItem {
 export interface NotificationItem {
   id: string;
   userId: string;
-  type: 'like' | 'comment' | 'follow' | 'event' | 'system';
+  type: 'like' | 'comment' | 'follow' | 'event' | 'message' | 'system';
   title: string;
   message: string;
   timestamp: string;
   read: boolean;
+  threadId?: string;
 }
 
 export interface MessageItem {
   id: string;
   threadId: string;
   senderId: string;
+  recipientId?: string;
   senderName: string;
   senderAvatar: string;
   text: string;

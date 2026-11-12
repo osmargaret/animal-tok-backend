@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import http from "http";
+import path from "path";
+import fs from "fs";
 import { Server } from "socket.io";
 import dotenv from "dotenv";
 import { getDb } from "./db";
@@ -10,7 +12,7 @@ import { createAnimalsRouter } from "./routes/animals";
 import { createFeedRouter } from "./routes/feed";
 import { marketplaceRouter } from "./routes/marketplace";
 import { eventsRouter } from "./routes/events";
-import { notificationsRouter } from "./routes/notifications";
+import { createNotificationsRouter } from "./routes/notifications";
 import { createMessagesRouter } from "./routes/messages";
 import { adminRouter } from "./routes/admin";
 import { uploadRouter } from "./routes/upload";
@@ -27,7 +29,15 @@ const io = new Server(server, {
 });
 
 app.use(cors());
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ extended: true, limit: "50mb" }));
+
+// Ensure uploads folder exists and serve it statically
+const uploadsDir = path.join(__dirname, "../uploads");
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+app.use("/uploads", express.static(uploadsDir));
 
 // Initialize Database on launch
 getDb().then(() => {
@@ -39,6 +49,15 @@ io.on("connection", (socket) => {
   console.log(`🔌 Client connected: ${socket.id}`);
 
   // Room subscriptions
+  socket.on("join_user", (userId: string) => {
+    socket.join(`user_${userId}`);
+    console.log(`Socket ${socket.id} joined user_${userId}`);
+  });
+
+  socket.on("leave_user", (userId: string) => {
+    socket.leave(`user_${userId}`);
+  });
+
   socket.on("join_profile", (profileId: string) => {
     socket.join(`profile_${profileId}`);
     console.log(`Socket ${socket.id} joined profile_${profileId}`);
@@ -47,6 +66,10 @@ io.on("connection", (socket) => {
   socket.on("join_thread", (threadId: string) => {
     socket.join(`thread_${threadId}`);
     console.log(`Socket ${socket.id} joined thread_${threadId}`);
+  });
+
+  socket.on("leave_thread", (threadId: string) => {
+    socket.leave(`thread_${threadId}`);
   });
 
   socket.on("disconnect", () => {
@@ -73,7 +96,7 @@ app.use("/api/feed", createFeedRouter(io));
 app.use("/api/posts", createFeedRouter(io));
 app.use("/api/marketplace", marketplaceRouter);
 app.use("/api/events", eventsRouter);
-app.use("/api/notifications", notificationsRouter);
+app.use("/api/notifications", createNotificationsRouter(io));
 app.use("/api/messages", createMessagesRouter(io));
 app.use("/api/admin", adminRouter);
 app.use("/api/upload", uploadRouter);

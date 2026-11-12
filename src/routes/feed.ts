@@ -1,18 +1,58 @@
 import { Router, Request, Response } from "express";
+import path from "path";
+import fs from "fs";
 import { getDb, saveDb } from "../db";
 import { Server } from "socket.io";
 import { Post, PostComment } from "../types";
 import { uploadUrlOrBase64ToCloudinary } from "../lib/cloudinary";
 
+const uploadsDir = path.join(__dirname, "../../uploads");
+
+function saveBase64Locally(data: string): string {
+  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+  const matches = data.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+  let ext = ".jpg";
+  let buffer: Buffer;
+
+  if (matches && matches.length === 3) {
+    const mime = matches[1];
+    if (mime.includes("video")) ext = ".mp4";
+    else if (mime.includes("png")) ext = ".png";
+    else if (mime.includes("gif")) ext = ".gif";
+    else if (mime.includes("audio")) ext = ".mp3";
+    buffer = Buffer.from(matches[2], "base64");
+  } else {
+    buffer = Buffer.from(data, "base64");
+  }
+
+  const filename = `media_${Date.now()}_${Math.random().toString(36).slice(2, 8)}${ext}`;
+  const filepath = path.join(uploadsDir, filename);
+  fs.writeFileSync(filepath, buffer);
+  return `/uploads/${filename}`;
+}
+
 export function createFeedRouter(io: Server) {
   const router = Router();
 
-  // Get Video Feed
+  // Get Video Feed with pagination support
   router.get("/", async (req: Request, res: Response) => {
     try {
       const db = await getDb();
-      const posts = Object.values(db.posts).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-      res.json(posts);
+      const allPosts = Object.values(db.posts).sort(
+        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      );
+
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));
+      const startIndex = (page - 1) * limit;
+      const paginatedPosts = allPosts.slice(startIndex, startIndex + limit);
+      const hasMore = startIndex + limit < allPosts.length;
+
+      res.setHeader("X-Total-Count", allPosts.length);
+      res.setHeader("X-Page", page);
+      res.setHeader("X-Has-More", String(hasMore));
+
+      res.json(paginatedPosts);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch feed" });
     }
@@ -21,45 +61,88 @@ export function createFeedRouter(io: Server) {
   // Create new Post
   router.post("/", async (req: Request, res: Response) => {
     try {
-      let { animalId, caption, videoUrl, imageUrl, tags, audioUrl, audioName } = req.body;
+      let { animalId, animalName, animalUsername, animalAvatar, caption, videoUrl, imageUrl, tags, audioUrl, audioName } = req.body;
       const db = await getDb();
 
-      // If media is base64, automatically upload to Cloudinary
+      const hostUrl = `${req.protocol}://${req.get("host")}`;
+
+      // If media is base64, try Cloudinary with 2.5s timeout, then fall back to local disk
       if (videoUrl && videoUrl.startsWith("data:")) {
         try {
-          const up = await uploadUrlOrBase64ToCloudinary(videoUrl, "animaltok/posts", "video");
+          const up = await Promise.race([
+            uploadUrlOrBase64ToCloudinary(videoUrl, "animaltok/posts", "video"),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Cloudinary timeout")), 2500))
+          ]);
           videoUrl = up.secure_url;
           if (!imageUrl) imageUrl = up.secure_url;
         } catch (err) {
-          console.warn("Cloudinary video base64 upload error:", err);
+          console.warn("Cloudinary video base64 upload failed, saving to local disk:", err);
+          const localPath = saveBase64Locally(videoUrl);
+          videoUrl = `${hostUrl}${localPath}`;
+          if (!imageUrl) imageUrl = videoUrl;
         }
       }
 
       if (imageUrl && imageUrl.startsWith("data:")) {
         try {
-          const up = await uploadUrlOrBase64ToCloudinary(imageUrl, "animaltok/posts", "image");
+          const up = await Promise.race([
+            uploadUrlOrBase64ToCloudinary(imageUrl, "animaltok/posts", "image"),
+            new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Cloudinary timeout")), 2500))
+          ]);
           imageUrl = up.secure_url;
         } catch (err) {
-          console.warn("Cloudinary image base64 upload error:", err);
+          console.warn("Cloudinary image base64 upload failed, saving to local disk:", err);
+          const localPath = saveBase64Locally(imageUrl);
+          imageUrl = `${hostUrl}${localPath}`;
         }
       }
       
-      const animal = db.animals[animalId || "1"] || {
-        id: animalId || "1",
-        name: "Bailey",
-        username: "@bailey.thelab",
-        avatar: "🐕",
-        photos: ["https://images.unsplash.com/photo-1552053831-71594a27632d?w=500&auto=format&fit=crop&q=80"]
-      };
+      let animal = db.animals[animalId || ""];
+      if (!animal && animalName) {
+        animal = Object.values(db.animals).find(
+          (a) => a.name.toLowerCase() === animalName.toLowerCase()
+        );
+      }
+      if (!animal) {
+        const newAnimalId = animalId || `a_${Date.now()}`;
+        animal = {
+          id: newAnimalId,
+          name: animalName || "Pet",
+          username: animalUsername || `@${(animalName || "pet").toLowerCase().replace(/\s+/g, "")}.pet`,
+          avatar: animalAvatar || "🐾",
+          coverImage: "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&auto=format&fit=crop&q=80",
+          photos: imageUrl ? [imageUrl] : [],
+          breed: "Pet",
+          age: "1 yr",
+          location: "Global",
+          bio: "",
+          handlerId: "u_1",
+          handlerName: "Handler",
+          followersCount: 0,
+          followingCount: 0,
+          isVerified: true,
+          createdAt: new Date().toISOString(),
+        };
+        db.animals[newAnimalId] = animal;
+      } else if (animalName) {
+        // Sync any updated pet details
+        animal.name = animalName;
+        if (animalUsername) animal.username = animalUsername;
+        if (animalAvatar) animal.avatar = animalAvatar;
+      }
+
+      if (imageUrl && Array.isArray(animal.photos) && !animal.photos.includes(imageUrl)) {
+        animal.photos.unshift(imageUrl);
+      }
 
       const postId = `post_${Date.now()}`;
       const newPost: Post = {
         id: postId,
         animalId: animal.id,
-        animalName: animal.name,
-        animalAvatar: animal.avatar,
-        animalUsername: animal.username,
-        videoUrl: videoUrl || "https://cdn.pixabay.com/video/2020/05/25/40130-424930032_large.mp4",
+        animalName: animalName || animal.name,
+        animalAvatar: animalAvatar || animal.avatar,
+        animalUsername: animalUsername || animal.username,
+        videoUrl: videoUrl || "",
         imageUrl: imageUrl || (animal.photos && animal.photos[0]) || "https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=400&h=700&fit=crop",
         caption: caption || "Check out my new video! 🐾",
         likesCount: 0,
@@ -72,12 +155,14 @@ export function createFeedRouter(io: Server) {
       };
 
       db.posts[postId] = newPost;
-      await saveDb(db);
 
-      // Realtime broadcast
+      // Realtime broadcast instantly
       io.emit("post_created", newPost);
 
       res.status(201).json(newPost);
+
+      // Persist to Neon PostgreSQL asynchronously in background
+      saveDb(db).catch((e) => console.error("Async saveDb error on post_created:", e));
     } catch (err) {
       res.status(500).json({ error: "Failed to create post" });
     }
@@ -105,12 +190,13 @@ export function createFeedRouter(io: Server) {
         isLiked = true;
       }
 
-      await saveDb(db);
-
-      // Broadcast
+      // Realtime broadcast instantly
       io.emit("post_stats_updated", { postId, likes: post.likesCount, isLiked });
 
       res.json({ isLiked, likesCount: post.likesCount });
+
+      // Persist to DB in background
+      saveDb(db).catch((e) => console.error("Async saveDb error on like:", e));
     } catch (err) {
       res.status(500).json({ error: "Failed to process like" });
     }
@@ -152,12 +238,13 @@ export function createFeedRouter(io: Server) {
       db.comments[postId].push(newComment);
       post.commentsCount += 1;
 
-      await saveDb(db);
-
-      // Broadcast
+      // Realtime broadcast instantly
       io.emit("new_comment", { postId, comment: newComment, totalComments: post.commentsCount });
 
       res.json({ success: true, comment: newComment, totalComments: post.commentsCount });
+
+      // Persist in background
+      saveDb(db).catch((e) => console.error("Async saveDb error on comment:", e));
     } catch (err) {
       res.status(500).json({ error: "Failed to add comment" });
     }
@@ -172,11 +259,14 @@ export function createFeedRouter(io: Server) {
       if (!post) return res.status(404).json({ error: "Post not found" });
 
       post.sharesCount += 1;
-      await saveDb(db);
 
+      // Realtime broadcast instantly
       io.emit("post_shared", { postId, shares: post.sharesCount });
 
       res.json({ success: true, sharesCount: post.sharesCount });
+
+      // Persist in background
+      saveDb(db).catch((e) => console.error("Async saveDb error on share:", e));
     } catch (err) {
       res.status(500).json({ error: "Failed to share post" });
     }

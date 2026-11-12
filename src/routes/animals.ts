@@ -15,22 +15,35 @@ export function createAnimalsRouter(io: Server) {
     }
   });
 
-  // Get animal by ID
-  router.get("/:id", async (req: Request, res: Response) => {
+  // Get animal by ID (or name / username)
+  router.get("/:id", async (req: Request, res: Response): Promise<any> => {
     try {
       const id = String(req.params.id);
       const db = await getDb();
-      const animal = db.animals[id];
+      let animal = db.animals[id];
+      if (!animal) {
+        animal = Object.values(db.animals).find(
+          (a) =>
+            a.id.toLowerCase() === id.toLowerCase() ||
+            a.name.toLowerCase() === id.toLowerCase() ||
+            a.username.toLowerCase() === id.toLowerCase() ||
+            a.username.toLowerCase() === `@${id.toLowerCase()}`
+        );
+      }
       if (!animal) return res.status(404).json({ error: "Animal profile not found" });
 
-      res.json(animal);
+      return res.json({
+        ...animal,
+        followers: animal.followersCount ?? 0,
+        handler: animal.handlerName || "Alex Morgan",
+      });
     } catch (err) {
-      res.status(500).json({ error: "Failed to fetch animal profile" });
+      return res.status(500).json({ error: "Failed to fetch animal profile" });
     }
   });
 
   // Check follow status
-  router.get("/follow/check", async (req: Request, res: Response) => {
+  const handleCheckFollow = async (req: Request, res: Response) => {
     const { animalId, userId } = req.query as { animalId: string; userId: string };
     if (!animalId || !userId) return res.json({ isFollowing: false });
 
@@ -41,10 +54,12 @@ export function createAnimalsRouter(io: Server) {
     } catch (err) {
       res.json({ isFollowing: false });
     }
-  });
+  };
+  router.get("/follow/check", handleCheckFollow);
+  router.get("/check", handleCheckFollow);
 
   // Toggle Follow / Unfollow
-  router.post("/follow", async (req: Request, res: Response) => {
+  const handleToggleFollow = async (req: Request, res: Response) => {
     const { animalId, userId } = req.body;
     if (!animalId || !userId) return res.status(400).json({ error: "animalId and userId are required" });
 
@@ -80,13 +95,50 @@ export function createAnimalsRouter(io: Server) {
 
       await saveDb(db);
 
-      // Realtime Broadcast
-      io.to(`profile_${animalId}`).emit("followers_updated", { followerCount: animal.followersCount });
+      // Realtime Broadcast across entire app and room
+      io.to(`profile_${animalId}`).emit("followers_updated", { animalId, followerCount: animal.followersCount });
+      io.emit("followers_updated", { animalId, followerCount: animal.followersCount });
       io.emit("animal_updated", animal);
 
       res.json({ isFollowing, followerCount: animal.followersCount });
     } catch (err) {
       res.status(500).json({ error: "Failed to toggle follow state" });
+    }
+  };
+  router.post("/follow", handleToggleFollow);
+  router.post("/", handleToggleFollow);
+
+  // Create new pet / animal profile
+  router.post("/create", async (req: Request, res: Response): Promise<any> => {
+    try {
+      const { name, username, bio, breed, age, location, avatar, coverImage, photos, handlerId, handlerName } = req.body;
+      if (!name) return res.status(400).json({ error: "Animal name is required" });
+      const db = await getDb();
+      const id = `a_${Date.now()}`;
+      const newAnimal = {
+        id,
+        name,
+        username: username || `@${name.toLowerCase().replace(/\s+/g, "")}.pet`,
+        avatar: avatar || "🐾",
+        coverImage: coverImage || "https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=800&auto=format&fit=crop&q=80",
+        breed: breed || "Pet",
+        age: age || "1 yr",
+        location: location || "Global",
+        bio: bio || "",
+        handlerId: handlerId || "u_1",
+        handlerName: handlerName || "Handler",
+        followersCount: 0,
+        followingCount: 0,
+        photos: (photos && photos.length > 0) ? photos : (avatar && avatar.startsWith("http") ? [avatar] : ["https://images.unsplash.com/photo-1548199973-03cce0bbc87b?w=500&auto=format&fit=crop&q=80"]),
+        isVerified: true,
+        createdAt: new Date().toISOString()
+      };
+      db.animals[id] = newAnimal;
+      await saveDb(db);
+      io.emit("animal_created", newAnimal);
+      return res.json(newAnimal);
+    } catch (err) {
+      return res.status(500).json({ error: "Failed to create animal profile" });
     }
   });
 

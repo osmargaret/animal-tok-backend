@@ -13,17 +13,35 @@ authRouter.post("/register", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Name, username, and email are required." });
     }
 
+    const cleanUsername = username.trim().toLowerCase().replace(/^@/, "");
+    const cleanEmail = email.trim().toLowerCase();
+
     const db = await getDb();
+
+    // Check if user already exists
+    const existing = Object.values(db.users).find(
+      (u) => u.email?.toLowerCase() === cleanEmail || u.username?.toLowerCase().replace(/^@/, "") === cleanUsername
+    );
+    if (existing) {
+      const firstAnimal = existing.animals && existing.animals[0] ? db.animals[existing.animals[0]] : null;
+      return res.status(200).json({
+        user: existing,
+        animal: firstAnimal,
+        message: "Welcome back! User already registered."
+      });
+    }
+
     const userId = `u_${Date.now()}`;
 
     const newUser: User = {
       id: userId,
-      name,
-      username,
-      email,
+      name: name.trim(),
+      username: `@${cleanUsername}`,
+      email: cleanEmail,
       avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
       bio: petBio || `Handler of ${petName || 'pets'}`,
       role: "user",
+      status: "active",
       subscriptionPlan: "free",
       animals: [],
       createdAt: new Date().toISOString()
@@ -35,8 +53,8 @@ authRouter.post("/register", async (req: Request, res: Response) => {
       const animalId = `a_${Date.now()}`;
       newAnimal = {
         id: animalId,
-        name: petName,
-        username: `@${petName.toLowerCase().replace(/\s+/g, '')}`,
+        name: petName.trim(),
+        username: `@${petName.toLowerCase().replace(/\s+/g, '')}.pet`,
         avatar: "🐾",
         coverImage: "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=800&auto=format&fit=crop&q=80",
         breed: petBreed || "Mixed Breed",
@@ -63,29 +81,48 @@ authRouter.post("/register", async (req: Request, res: Response) => {
       user: newUser,
       animal: newAnimal
     });
-  } catch (err) {
-    res.status(500).json({ error: "Registration failed." });
+  } catch (err: any) {
+    console.error("Registration error:", err);
+    res.status(500).json({ error: err.message || "Registration failed." });
   }
 });
 
 // Login
 authRouter.post("/login", async (req: Request, res: Response) => {
   try {
-    const { username } = req.body;
-    const db = await getDb();
-    
-    const user = Object.values(db.users).find(u => u.username.toLowerCase() === username?.toLowerCase() || u.email.toLowerCase() === username?.toLowerCase());
+    const { username, email } = req.body;
+    const loginIdentifier = (username || email || "").trim().toLowerCase();
 
-    if (!user) {
-      // Fallback to demo user u_3 (Clemence) if not found
-      return res.json({ user: db.users["u_3"], animal: db.animals["bella"] });
+    if (!loginIdentifier) {
+      return res.status(400).json({ error: "Username or email is required." });
     }
 
-    const firstAnimalId = user.animals[0];
+    const cleanInput = loginIdentifier.replace(/^@/, "");
+
+    const db = await getDb();
+    
+    const user = Object.values(db.users).find((u) => {
+      const uName = (u.username || "").toLowerCase().replace(/^@/, "");
+      const uEmail = (u.email || "").toLowerCase();
+      return uName === cleanInput || uEmail === loginIdentifier;
+    });
+
+    if (!user) {
+      // If demo user or fallback
+      if (cleanInput.includes("demo") || cleanInput.includes("alex")) {
+        const fallback = db.users["u_3"] || Object.values(db.users)[0];
+        const firstAnimal = fallback?.animals?.[0] ? db.animals[fallback.animals[0]] : null;
+        return res.json({ user: fallback, animal: firstAnimal });
+      }
+      return res.status(401).json({ error: "Invalid credentials. User not found." });
+    }
+
+    const firstAnimalId = user.animals && user.animals[0];
     const animal = firstAnimalId ? db.animals[firstAnimalId] : null;
 
     res.json({ user, animal });
-  } catch (err) {
+  } catch (err: any) {
+    console.error("Login error:", err);
     res.status(500).json({ error: "Login failed." });
   }
 });
@@ -103,5 +140,27 @@ authRouter.get("/me", async (req: Request, res: Response) => {
     res.json({ user, animals: userAnimals });
   } catch (err) {
     res.status(500).json({ error: "Failed to fetch current user" });
+  }
+});
+
+// Update user / handler profile
+authRouter.put("/me", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { userId, name, username, bio, avatar } = req.body;
+    const db = await getDb();
+    const targetUserId = userId || (req.query.userId as string) || "u_3";
+    const user = db.users[targetUserId];
+
+    if (!user) return res.status(404).json({ error: "User not found" });
+
+    if (name) user.name = name;
+    if (username) user.username = username;
+    if (bio !== undefined) user.bio = bio;
+    if (avatar) user.avatar = avatar;
+
+    await saveDb(db);
+    return res.json({ success: true, user });
+  } catch (err) {
+    return res.status(500).json({ error: "Failed to update profile" });
   }
 });

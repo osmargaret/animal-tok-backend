@@ -21,8 +21,14 @@ export async function runMigrations() {
       status TEXT NOT NULL DEFAULT 'active',
       subscription_plan TEXT NOT NULL DEFAULT 'free',
       animals TEXT[] DEFAULT '{}',
+      push_token TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Ensure push_token exists if users table already existed
+  await query(`
+    ALTER TABLE users ADD COLUMN IF NOT EXISTS push_token TEXT;
   `);
 
   // Animal profiles table
@@ -179,12 +185,25 @@ export async function runMigrations() {
       id TEXT PRIMARY KEY,
       thread_id TEXT NOT NULL,
       sender_id TEXT,
+      recipient_id TEXT,
       sender_name TEXT,
       sender_avatar TEXT,
       text TEXT NOT NULL,
       timestamp TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Ensure recipient_id column exists if table already existed
+  await query(`
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_id TEXT;
+  `);
+
+  // Indexes for fast message lookups
+  await query(`
+    CREATE INDEX IF NOT EXISTS idx_messages_thread_id ON messages (thread_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_sender_id ON messages (sender_id);
+    CREATE INDEX IF NOT EXISTS idx_messages_recipient_id ON messages (recipient_id);
   `);
 
   // Reports table

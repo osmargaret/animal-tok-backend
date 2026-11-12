@@ -61,6 +61,7 @@ export async function getDb(): Promise<DatabaseSchema> {
       avatar: u.avatar, bio: u.bio, role: u.role, status: u.status,
       subscriptionPlan: u.subscription_plan,
       animals: u.animals || [],
+      pushToken: u.push_token,
       createdAt: u.created_at,
     };
   }
@@ -165,9 +166,10 @@ export async function getDb(): Promise<DatabaseSchema> {
     if (!messages[m.thread_id]) messages[m.thread_id] = [];
     messages[m.thread_id].push({
       id: m.id, threadId: m.thread_id, senderId: m.sender_id,
+      recipientId: m.recipient_id,
       senderName: m.sender_name, senderAvatar: m.sender_avatar,
       text: m.text, timestamp: m.timestamp,
-    });
+    } as any);
   }
 
   // Reports dict
@@ -200,15 +202,15 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
   // Upsert users
   for (const u of Object.values(data.users)) {
     await query(`
-      INSERT INTO users (id, name, username, email, avatar, bio, role, status, subscription_plan, animals, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      INSERT INTO users (id, name, username, email, avatar, bio, role, status, subscription_plan, animals, push_token, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       ON CONFLICT (id) DO UPDATE SET
         name=EXCLUDED.name, username=EXCLUDED.username, email=EXCLUDED.email,
         avatar=EXCLUDED.avatar, bio=EXCLUDED.bio, role=EXCLUDED.role,
         status=EXCLUDED.status, subscription_plan=EXCLUDED.subscription_plan,
-        animals=EXCLUDED.animals
-    `, [u.id, u.name, u.username, u.email, u.avatar, u.bio, u.role, u.status,
-        u.subscriptionPlan, u.animals, u.createdAt]);
+        animals=EXCLUDED.animals, push_token=COALESCE(EXCLUDED.push_token, users.push_token)
+    `, [u.id, u.name, u.username, u.email, u.avatar || null, u.bio || '', u.role || 'user', u.status || 'active',
+        u.subscriptionPlan || 'free', u.animals || [], u.pushToken || null, u.createdAt || new Date().toISOString()]);
   }
 
   // Upsert animals
@@ -237,6 +239,8 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
         audio_url, audio_name, created_at)
       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
       ON CONFLICT (id) DO UPDATE SET
+        animal_id=EXCLUDED.animal_id, animal_name=EXCLUDED.animal_name,
+        animal_avatar=EXCLUDED.animal_avatar, animal_username=EXCLUDED.animal_username,
         caption=EXCLUDED.caption, likes_count=EXCLUDED.likes_count,
         comments_count=EXCLUDED.comments_count, shares_count=EXCLUDED.shares_count,
         tags=EXCLUDED.tags, video_url=EXCLUDED.video_url, image_url=EXCLUDED.image_url,
@@ -310,10 +314,10 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
   for (const threadMsgs of Object.values(data.messages || {})) {
     for (const m of threadMsgs) {
       await query(`
-        INSERT INTO messages (id, thread_id, sender_id, sender_name, sender_avatar, text, timestamp)
-        VALUES ($1,$2,$3,$4,$5,$6,$7)
+        INSERT INTO messages (id, thread_id, sender_id, recipient_id, sender_name, sender_avatar, text, timestamp)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
         ON CONFLICT (id) DO NOTHING
-      `, [m.id, m.threadId, m.senderId, m.senderName, m.senderAvatar, m.text, m.timestamp]);
+      `, [m.id, m.threadId, m.senderId, (m as any).recipientId || null, m.senderName, m.senderAvatar, m.text, m.timestamp]);
     }
   }
 
