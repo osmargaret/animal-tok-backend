@@ -10,7 +10,10 @@ export function createMessagesRouter(io: Server) {
   // Get conversation inbox / threads list for a user
   router.get("/threads", async (req: Request, res: Response) => {
     try {
-      const userId = (req.query.userId as string) || "u_3";
+      const userId = req.query.userId as string;
+      if (!userId || userId === "null" || userId === "undefined") {
+        return res.json([]);
+      }
       const db = await getDb();
 
       // Gather all threads where the user has participated or is the recipient
@@ -170,13 +173,13 @@ export function createMessagesRouter(io: Server) {
       } = req.body;
       const db = await getDb();
 
-      if (!threadId || !text) {
-        return res.status(400).json({ error: "threadId and text are required" });
+      if (!threadId || !text || !senderId) {
+        return res.status(400).json({ error: "threadId, senderId and text are required" });
       }
 
-      const user = db.users[senderId] || (senderId ? { id: senderId, name: senderName || "User", avatar: senderAvatar || "👤" } : db.users["u_3"] || { id: "u_3", name: "User", avatar: "👤" });
+      const user = db.users[senderId] || { id: senderId, name: senderName || "User", avatar: senderAvatar || "👤" };
 
-      const finalSenderId = user.id || senderId || "u_3";
+      const finalSenderId = user.id || senderId;
       const finalSenderName = senderName || user.name || "User";
       const finalSenderAvatar = senderAvatar || user.avatar || "👤";
 

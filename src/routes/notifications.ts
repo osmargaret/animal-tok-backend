@@ -9,7 +9,10 @@ export function createNotificationsRouter(io: Server) {
   // Get Notifications for User
   router.get("/", async (req: Request, res: Response) => {
     try {
-      const userId = (req.query.userId as string) || "u_3";
+      const userId = req.query.userId as string;
+      if (!userId || userId === "null" || userId === "undefined") {
+        return res.json([]);
+      }
       const db = await getDb();
       const notifications = db.notifications[userId] || [
         {
@@ -32,7 +35,10 @@ export function createNotificationsRouter(io: Server) {
   // Mark Notifications as read
   router.post("/read-all", async (req: Request, res: Response) => {
     try {
-      const userId = (req.body.userId as string) || "u_3";
+      const userId = req.body.userId as string;
+      if (!userId || userId === "null" || userId === "undefined") {
+        return res.json({ success: true });
+      }
       const db = await getDb();
 
       if (db.notifications[userId]) {

@@ -4,5 +4,6 @@ dist/
 .env.*
 !.env.example
 *.log
-uploads/
+uploads/*
+!uploads/sounds/
 
