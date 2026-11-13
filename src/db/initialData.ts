@@ -217,7 +217,7 @@ export const initialDbData: DatabaseSchema = {
     }
   },
   likes: {},
-  comments: {},
+  comments: {
     "post_1": [
       {
         id: "c_1",

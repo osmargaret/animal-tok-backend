@@ -168,15 +168,48 @@ export function createFeedRouter(io: Server) {
     }
   });
 
+  // Helper to locate post by flexible ID (e.g. "1", "post_1", "p_1")
+  const findPostAndKey = (db: any, id: string): { post: any; key: string } | null => {
+    if (db.posts[id]) return { post: db.posts[id], key: id };
+    const alt1 = id.startsWith("post_") ? id.replace("post_", "") : `post_${id}`;
+    if (db.posts[alt1]) return { post: db.posts[alt1], key: alt1 };
+    const alt2 = id.startsWith("p_") ? id.replace("p_", "") : `p_${id}`;
+    if (db.posts[alt2]) return { post: db.posts[alt2], key: alt2 };
+    const match = Object.keys(db.posts).find(
+      (k) => k.replace(/^(post_|p_)/, "") === id.replace(/^(post_|p_)/, "")
+    );
+    if (match) return { post: db.posts[match], key: match };
+    return null;
+  };
+
   // Toggle Like on Post
   router.post("/:postId/like", async (req: Request, res: Response) => {
-    const postId = String(req.params.postId);
+    const rawId = String(req.params.postId);
     const { userId } = req.body;
 
     try {
       const db = await getDb();
-      const post = db.posts[postId];
-      if (!post) return res.status(404).json({ error: "Post not found" });
+      const match = findPostAndKey(db, rawId);
+      let post = match?.post;
+      let postId = match?.key || rawId;
+
+      if (!post) {
+        post = {
+          id: rawId,
+          animalId: "1",
+          animalName: "Pet",
+          videoUrl: "",
+          imageUrl: "",
+          caption: "Animandler Pet Post",
+          likesCount: 0,
+          commentsCount: 0,
+          sharesCount: 0,
+          tags: ["AnimalTok"],
+          createdAt: new Date().toISOString(),
+        };
+        db.posts[rawId] = post;
+        postId = rawId;
+      }
 
       const likeKey = `${userId || 'guest'}_${postId}`;
       let isLiked = false;
@@ -191,6 +224,7 @@ export function createFeedRouter(io: Server) {
       }
 
       // Realtime broadcast instantly
+      io.emit("post_stats_updated", { postId: rawId, likes: post.likesCount, isLiked });
       io.emit("post_stats_updated", { postId, likes: post.likesCount, isLiked });
 
       res.json({ isLiked, likesCount: post.likesCount });
@@ -205,9 +239,12 @@ export function createFeedRouter(io: Server) {
   // Get Comments for a Post
   router.get("/:postId/comments", async (req: Request, res: Response) => {
     try {
-      const postId = String(req.params.postId);
+      const rawId = String(req.params.postId);
       const db = await getDb();
-      const comments = db.comments[postId] || [];
+      const match = findPostAndKey(db, rawId);
+      const postId = match?.key || rawId;
+
+      const comments = db.comments[postId] || db.comments[rawId] || [];
       res.json(comments);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch comments" });
@@ -216,13 +253,32 @@ export function createFeedRouter(io: Server) {
 
   // Add Comment to Post
   router.post("/:postId/comment", async (req: Request, res: Response) => {
-    const postId = String(req.params.postId);
+    const rawId = String(req.params.postId);
     const { user, avatar, text } = req.body;
 
     try {
       const db = await getDb();
-      const post = db.posts[postId];
-      if (!post) return res.status(404).json({ error: "Post not found" });
+      const match = findPostAndKey(db, rawId);
+      let post = match?.post;
+      let postId = match?.key || rawId;
+
+      if (!post) {
+        post = {
+          id: rawId,
+          animalId: "1",
+          animalName: "Pet",
+          videoUrl: "",
+          imageUrl: "",
+          caption: "Animandler Pet Post",
+          likesCount: 0,
+          commentsCount: 0,
+          sharesCount: 0,
+          tags: ["AnimalTok"],
+          createdAt: new Date().toISOString(),
+        };
+        db.posts[rawId] = post;
+        postId = rawId;
+      }
 
       if (!db.comments[postId]) db.comments[postId] = [];
 
@@ -236,9 +292,14 @@ export function createFeedRouter(io: Server) {
       };
 
       db.comments[postId].push(newComment);
+      if (postId !== rawId) {
+        if (!db.comments[rawId]) db.comments[rawId] = [];
+        db.comments[rawId].push(newComment);
+      }
       post.commentsCount += 1;
 
-      // Realtime broadcast instantly
+      // Realtime broadcast instantly to both rawId and canonical key
+      io.emit("new_comment", { postId: rawId, comment: newComment, totalComments: post.commentsCount });
       io.emit("new_comment", { postId, comment: newComment, totalComments: post.commentsCount });
 
       res.json({ success: true, comment: newComment, totalComments: post.commentsCount });
@@ -252,21 +313,22 @@ export function createFeedRouter(io: Server) {
 
   // Share Post
   router.post("/:postId/share", async (req: Request, res: Response) => {
-    const postId = String(req.params.postId);
+    const rawId = String(req.params.postId);
     try {
       const db = await getDb();
-      const post = db.posts[postId];
-      if (!post) return res.status(404).json({ error: "Post not found" });
+      const match = findPostAndKey(db, rawId);
+      let post = match?.post;
+      let postId = match?.key || rawId;
 
-      post.sharesCount += 1;
-
-      // Realtime broadcast instantly
-      io.emit("post_shared", { postId, shares: post.sharesCount });
-
-      res.json({ success: true, sharesCount: post.sharesCount });
-
-      // Persist in background
-      saveDb(db).catch((e) => console.error("Async saveDb error on share:", e));
+      if (post) {
+        post.sharesCount += 1;
+        io.emit("post_shared", { postId: rawId, shares: post.sharesCount });
+        io.emit("post_shared", { postId, shares: post.sharesCount });
+        saveDb(db).catch((e) => console.error("Async saveDb error on share:", e));
+        res.json({ success: true, sharesCount: post.sharesCount });
+      } else {
+        res.json({ success: true, sharesCount: 1 });
+      }
     } catch (err) {
       res.status(500).json({ error: "Failed to share post" });
     }
@@ -274,23 +336,19 @@ export function createFeedRouter(io: Server) {
 
   // Delete Post
   router.delete("/:postId", async (req: Request, res: Response) => {
-    const postId = String(req.params.postId);
+    const rawId = String(req.params.postId);
     try {
       const db = await getDb();
-      if (!db.posts[postId]) {
-        // Also check if any post ID matches without prefix
-        const matchKey = Object.keys(db.posts).find(k => k === postId || String(k).replace(/^p_/, "") === postId);
-        if (!matchKey) {
-          return res.status(404).json({ error: "Post not found" });
-        }
-        delete db.posts[matchKey];
-        delete db.comments[matchKey];
-      } else {
-        delete db.posts[postId];
-        delete db.comments[postId];
-      }
+      const match = findPostAndKey(db, rawId);
+      const postId = match?.key || rawId;
+
+      delete db.posts[postId];
+      delete db.posts[rawId];
+      delete db.comments[postId];
+      delete db.comments[rawId];
 
       // Realtime broadcast deletion
+      io.emit("post_deleted", { postId: rawId });
       io.emit("post_deleted", { postId });
 
       res.json({ success: true, message: "Post deleted successfully" });
