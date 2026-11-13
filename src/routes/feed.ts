@@ -272,5 +272,35 @@ export function createFeedRouter(io: Server) {
     }
   });
 
+  // Delete Post
+  router.delete("/:postId", async (req: Request, res: Response) => {
+    const postId = String(req.params.postId);
+    try {
+      const db = await getDb();
+      if (!db.posts[postId]) {
+        // Also check if any post ID matches without prefix
+        const matchKey = Object.keys(db.posts).find(k => k === postId || String(k).replace(/^p_/, "") === postId);
+        if (!matchKey) {
+          return res.status(404).json({ error: "Post not found" });
+        }
+        delete db.posts[matchKey];
+        delete db.comments[matchKey];
+      } else {
+        delete db.posts[postId];
+        delete db.comments[postId];
+      }
+
+      // Realtime broadcast deletion
+      io.emit("post_deleted", { postId });
+
+      res.json({ success: true, message: "Post deleted successfully" });
+
+      // Persist deletion
+      saveDb(db).catch((e) => console.error("Async saveDb error on delete post:", e));
+    } catch (err) {
+      res.status(500).json({ error: "Failed to delete post" });
+    }
+  });
+
   return router;
 }
