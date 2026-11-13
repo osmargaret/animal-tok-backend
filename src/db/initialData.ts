@@ -55,8 +55,8 @@ export const initialDbData: DatabaseSchema = {
       bio: "Obsessed with tennis balls & park swims. 🎾🐕",
       handlerId: "u_1",
       handlerName: "Sarah Jenkins",
-      followersCount: 45200,
-      followingCount: 120,
+      followersCount: 0,
+      followingCount: 0,
       photos: [
         "https://images.unsplash.com/photo-1552053831-71594a27632d?w=500&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1537151625747-768eb6cf92b2?w=500&auto=format&fit=crop&q=80",
@@ -77,8 +77,8 @@ export const initialDbData: DatabaseSchema = {
       bio: "Queen of cardboard boxes and sunbeams 👑🐈",
       handlerId: "u_2",
       handlerName: "Alex Rivera",
-      followersCount: 89100,
-      followingCount: 45,
+      followersCount: 0,
+      followingCount: 0,
       photos: [
         "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?w=500&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1573865526739-10659fec78a5?w=500&auto=format&fit=crop&q=80"
@@ -98,8 +98,8 @@ export const initialDbData: DatabaseSchema = {
       bio: "Living my best life 🐾 Fetch champion 2024",
       handlerId: "u_3",
       handlerName: "Clemence",
-      followersCount: 1250,
-      followingCount: 88,
+      followersCount: 0,
+      followingCount: 0,
       photos: [
         "https://images.unsplash.com/photo-1587300003388-59208cc962cb?w=500&auto=format&fit=crop&q=80",
         "https://images.unsplash.com/photo-1601758228041-f3b2795255f1?w=500&auto=format&fit=crop&q=80"
@@ -108,10 +108,7 @@ export const initialDbData: DatabaseSchema = {
       createdAt: "2024-03-01T08:30:00.000Z"
     }
   },
-  follows: {
-    "u_1_2": true,
-    "u_3_1": true
-  },
+  follows: {},
   posts: {
     "post_1": {
       id: "post_1",
