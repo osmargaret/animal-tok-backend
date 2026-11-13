@@ -49,8 +49,20 @@ export function createAnimalsRouter(io: Server) {
 
     try {
       const db = await getDb();
-      const followKey = `${userId}_${animalId}`;
-      res.json({ isFollowing: !!db.follows[followKey] });
+      let targetId = animalId;
+      if (!db.animals[animalId]) {
+        const found = Object.entries(db.animals).find(
+          ([key, a]) =>
+            key.toLowerCase() === animalId.toLowerCase() ||
+            a.id.toLowerCase() === animalId.toLowerCase() ||
+            a.name.toLowerCase() === animalId.toLowerCase() ||
+            a.username.toLowerCase() === animalId.toLowerCase() ||
+            a.username.toLowerCase() === `@${animalId.toLowerCase()}`
+        );
+        if (found) targetId = found[0];
+      }
+      const isFollowing = !!(db.follows[`${userId}_${targetId}`] || db.follows[`${userId}_${animalId}`]);
+      res.json({ isFollowing });
     } catch (err) {
       res.json({ isFollowing: false });
     }
@@ -65,18 +77,38 @@ export function createAnimalsRouter(io: Server) {
 
     try {
       const db = await getDb();
-      const animal = db.animals[animalId];
+      let animal = db.animals[animalId];
+      let targetId = animalId;
+
+      if (!animal) {
+        const found = Object.entries(db.animals).find(
+          ([key, a]) =>
+            key.toLowerCase() === animalId.toLowerCase() ||
+            a.id.toLowerCase() === animalId.toLowerCase() ||
+            a.name.toLowerCase() === animalId.toLowerCase() ||
+            a.username.toLowerCase() === animalId.toLowerCase() ||
+            a.username.toLowerCase() === `@${animalId.toLowerCase()}`
+        );
+        if (found) {
+          targetId = found[0];
+          animal = found[1];
+        }
+      }
+
       if (!animal) return res.status(404).json({ error: "Animal not found" });
 
-      const followKey = `${userId}_${animalId}`;
+      const followKey1 = `${userId}_${targetId}`;
+      const followKey2 = `${userId}_${animalId}`;
       let isFollowing = false;
 
-      if (db.follows[followKey]) {
-        delete db.follows[followKey];
-        animal.followersCount = Math.max(0, animal.followersCount - 1);
+      if (db.follows[followKey1] || db.follows[followKey2]) {
+        delete db.follows[followKey1];
+        delete db.follows[followKey2];
+        animal.followersCount = Math.max(0, (animal.followersCount || 1) - 1);
       } else {
-        db.follows[followKey] = true;
-        animal.followersCount += 1;
+        db.follows[followKey1] = true;
+        db.follows[followKey2] = true;
+        animal.followersCount = (animal.followersCount || 0) + 1;
         isFollowing = true;
 
         if (animal.handlerId) {
@@ -96,8 +128,9 @@ export function createAnimalsRouter(io: Server) {
       await saveDb(db);
 
       // Realtime Broadcast across entire app and room
+      io.to(`profile_${targetId}`).emit("followers_updated", { animalId: targetId, followerCount: animal.followersCount });
       io.to(`profile_${animalId}`).emit("followers_updated", { animalId, followerCount: animal.followersCount });
-      io.emit("followers_updated", { animalId, followerCount: animal.followersCount });
+      io.emit("followers_updated", { animalId: targetId, followerCount: animal.followersCount });
       io.emit("animal_updated", animal);
 
       res.json({ isFollowing, followerCount: animal.followersCount });

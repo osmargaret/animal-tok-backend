@@ -180,6 +180,8 @@ export async function getDb(): Promise<DatabaseSchema> {
     messages[m.thread_id].push({
       id: m.id, threadId: m.thread_id, senderId: m.sender_id,
       recipientId: m.recipient_id,
+      recipientName: m.recipient_name,
+      recipientAvatar: m.recipient_avatar,
       senderName: m.sender_name, senderAvatar: m.sender_avatar,
       text: m.text, timestamp: m.timestamp,
     } as any);
@@ -356,10 +358,10 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
   for (const threadMsgs of Object.values(data.messages || {})) {
     for (const m of threadMsgs) {
       await query(`
-        INSERT INTO messages (id, thread_id, sender_id, recipient_id, sender_name, sender_avatar, text, timestamp)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        INSERT INTO messages (id, thread_id, sender_id, recipient_id, recipient_name, recipient_avatar, sender_name, sender_avatar, text, timestamp)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
         ON CONFLICT (id) DO NOTHING
-      `, [m.id, m.threadId, m.senderId, (m as any).recipientId || null, m.senderName, m.senderAvatar, m.text, m.timestamp]);
+      `, [m.id, m.threadId, m.senderId, (m as any).recipientId || null, (m as any).recipientName || null, (m as any).recipientAvatar || null, m.senderName, m.senderAvatar, m.text, m.timestamp]);
     }
   }
 

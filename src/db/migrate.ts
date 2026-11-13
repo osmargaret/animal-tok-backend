@@ -200,9 +200,11 @@ export async function runMigrations() {
     )
   `);
 
-  // Ensure recipient_id column exists if table already existed
+  // Ensure recipient columns exist if table already existed
   await query(`
     ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_id TEXT;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_name TEXT;
+    ALTER TABLE messages ADD COLUMN IF NOT EXISTS recipient_avatar TEXT;
   `);
 
   // Indexes for fast message lookups
