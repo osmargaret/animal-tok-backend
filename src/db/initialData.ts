@@ -410,5 +410,120 @@ export const initialDbData: DatabaseSchema = {
       details: "Granted verification badge to @luna.cat",
       timestamp: "Today 19:45"
     }
-  ]
+  ],
+  ads: {
+    "ad_1": {
+      id: "ad_1",
+      title: "24/7 Emergency Veterinary & ICU",
+      advertiserName: "Austin Pet Emergency Hospital",
+      advertiserAvatar: "https://images.unsplash.com/photo-1628009368231-7bb7cfcb0def?w=150&auto=format&fit=crop&q=80",
+      adType: "video",
+      mediaUrl: "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4",
+      caption: "Emergency trauma, digital radiography, intensive ICU and urgent surgeries ready 24/7 for your pets. Board-certified veterinarians always on duty.",
+      category: "Pet Hospital",
+      sponsorBadge: "Verified Hospital Partner",
+      ctaText: "Call Emergency Vet 📞",
+      ctaUrl: "tel:+15125550199",
+      status: "active",
+      targetType: "external",
+      impressions: 1420,
+      clicks: 184,
+      createdAt: "2026-09-08T10:00:00.000Z"
+    },
+    "ad_2": {
+      id: "ad_2",
+      title: "Comprehensive Wellness Exams & Vaccines",
+      advertiserName: "Paws & Whiskers Animal Clinic",
+      advertiserAvatar: "https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=150&auto=format&fit=crop&q=80",
+      adType: "image",
+      mediaUrl: "https://images.unsplash.com/photo-1576201836106-db1758fd1c97?w=800&auto=format&fit=crop&q=80",
+      caption: "Keep your furry companions thriving! Complete annual exams, dental scalings, rabies vaccines, and nutrition plans. $25 off first visit for Animandler users!",
+      category: "Vet Care",
+      sponsorBadge: "Featured Vet Clinic",
+      ctaText: "Book Appointment 🩺",
+      ctaUrl: "https://animandler.app",
+      status: "active",
+      targetType: "external",
+      impressions: 980,
+      clicks: 122,
+      createdAt: "2026-09-08T11:30:00.000Z"
+    },
+    "ad_3": {
+      id: "ad_3",
+      title: "Bark & Bounce (Official Artist Single)",
+      advertiserName: "The Paws Crew (Indie Artist)",
+      advertiserAvatar: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=150&auto=format&fit=crop&q=80",
+      adType: "audio",
+      mediaUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      caption: "The brand new viral pet anthem! Listen to the high-energy beat, add it to your video clips, and stream the full album on all music platforms.",
+      category: "Artist Music",
+      sponsorBadge: "Artist Spotlight",
+      ctaText: "Stream on Spotify 🎵",
+      ctaUrl: "https://spotify.com",
+      status: "active",
+      targetType: "external",
+      impressions: 2150,
+      clicks: 340,
+      createdAt: "2026-09-08T14:00:00.000Z"
+    }
+  },
+  sounds: {
+    "sound-1": {
+      id: "sound-1",
+      title: "Golden Hour Bark & Bounce",
+      artist: "The Paws Crew",
+      duration: "0:30",
+      category: "Promoted",
+      isPromoted: true,
+      sponsorBadge: "Artist Spotlight",
+      coverUrl: "https://images.unsplash.com/photo-1543466835-00a7907e9de1?auto=format&fit=crop&w=150&q=80",
+      previewUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      usageCount: "14.2K videos",
+      externalUrl: "https://spotify.com",
+      status: "active",
+      createdAt: "2026-09-01T10:00:00.000Z"
+    },
+    "sound-2": {
+      id: "sound-2",
+      title: "Agility Sprint Beat (Electro Pet)",
+      artist: "DJ Pawz x BeatClub",
+      duration: "0:30",
+      category: "Sports",
+      isPromoted: false,
+      sponsorBadge: "Trending",
+      coverUrl: "https://images.unsplash.com/photo-1583511655857-d19b40a7a54e?auto=format&fit=crop&w=150&q=80",
+      previewUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3",
+      usageCount: "9.8K videos",
+      status: "active",
+      createdAt: "2026-09-02T10:00:00.000Z"
+    },
+    "sound-3": {
+      id: "sound-3",
+      title: "Cute Cat Nap (Lofi Purr)",
+      artist: "Chill Whiskers",
+      duration: "0:30",
+      category: "Relaxing",
+      isPromoted: true,
+      sponsorBadge: "Promoted Track",
+      coverUrl: "https://images.unsplash.com/photo-1514888286974-6c03e2ca1dba?auto=format&fit=crop&w=150&q=80",
+      previewUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3",
+      usageCount: "21.5K videos",
+      externalUrl: "https://apple.com/music",
+      status: "active",
+      createdAt: "2026-09-03T10:00:00.000Z"
+    },
+    "sound-4": {
+      id: "sound-4",
+      title: "Happy Puppy Walk",
+      artist: "Sunny Tails",
+      duration: "0:30",
+      category: "Trending",
+      isPromoted: false,
+      coverUrl: "https://images.unsplash.com/photo-1537151625747-768eb6cf92b2?auto=format&fit=crop&w=150&q=80",
+      previewUrl: "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3",
+      usageCount: "18.1K videos",
+      status: "active",
+      createdAt: "2026-09-04T10:00:00.000Z"
+    }
+  }
 };

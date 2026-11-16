@@ -18,6 +18,7 @@ import { createMessagesRouter } from "./routes/messages";
 import { adminRouter } from "./routes/admin";
 import { uploadRouter } from "./routes/upload";
 import { paymentsRouter } from "./routes/payments";
+import { adsRouter, soundsRouter } from "./routes/ads";
 
 dotenv.config();
 
@@ -122,6 +123,8 @@ app.use("/api/events", eventsRouter);
 app.use("/api/notifications", createNotificationsRouter(io));
 app.use("/api/messages", createMessagesRouter(io));
 app.use("/api/admin", adminRouter);
+app.use("/api/ads", adsRouter);
+app.use("/api/sounds", soundsRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/payments", paymentsRouter);
 

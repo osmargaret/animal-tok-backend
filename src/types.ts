@@ -165,6 +165,42 @@ export interface AuditLog {
   timestamp: string;
 }
 
+export interface AdCampaign {
+  id: string;
+  title: string;
+  advertiserName: string;
+  advertiserAvatar: string;
+  adType: 'video' | 'image' | 'audio';
+  mediaUrl: string;
+  caption: string;
+  category: string;
+  sponsorBadge: string;
+  ctaText: string;
+  ctaUrl: string;
+  status: 'active' | 'paused' | 'completed';
+  targetType: 'external' | 'post' | 'event' | 'service' | 'sound';
+  targetId?: string;
+  impressions: number;
+  clicks: number;
+  createdAt: string;
+}
+
+export interface PromotedSound {
+  id: string;
+  title: string;
+  artist: string;
+  duration: string;
+  category: 'Trending' | 'Promoted' | 'Sports' | 'Relaxing' | 'Funny';
+  isPromoted: boolean;
+  sponsorBadge?: string;
+  coverUrl: string;
+  previewUrl: string;
+  usageCount: string;
+  externalUrl?: string;
+  status: 'active' | 'archived';
+  createdAt: string;
+}
+
 export interface DatabaseSchema {
   users: Record<string, User>;
   animals: Record<string, AnimalProfile>;
@@ -180,4 +216,6 @@ export interface DatabaseSchema {
   threadMeta?: Record<string, { recipientId?: string; recipientName?: string; recipientAvatar?: string; title?: string }>;
   reports?: Record<string, ReportItem>;
   auditLogs?: AuditLog[];
+  ads?: Record<string, AdCampaign>;
+  sounds?: Record<string, PromotedSound>;
 }

@@ -48,11 +48,48 @@ export function createFeedRouter(io: Server) {
       const paginatedPosts = allPosts.slice(startIndex, startIndex + limit);
       const hasMore = startIndex + limit < allPosts.length;
 
+      // Interleave active ads every 4 posts
+      const activeAds = Object.values(db.ads || {}).filter(a => a.status === 'active');
+      const feedWithAds: any[] = [];
+      let adIndex = (page - 1) * 2;
+
+      paginatedPosts.forEach((post, i) => {
+        feedWithAds.push(post);
+        if (activeAds.length > 0 && (i + 1) % 4 === 0) {
+          const ad = activeAds[adIndex % activeAds.length];
+          adIndex++;
+          feedWithAds.push({
+            id: ad.id,
+            isAd: true,
+            adType: ad.adType,
+            mediaUrl: ad.mediaUrl,
+            videoUrl: ad.adType === 'video' ? ad.mediaUrl : undefined,
+            imageUrl: ad.adType === 'image' ? ad.mediaUrl : (ad.adType === 'video' ? undefined : ad.advertiserAvatar),
+            audioUrl: ad.adType === 'audio' ? ad.mediaUrl : undefined,
+            title: ad.title,
+            caption: ad.caption,
+            advertiserName: ad.advertiserName,
+            advertiserAvatar: ad.advertiserAvatar,
+            sponsorBadge: ad.sponsorBadge || "Sponsored",
+            ctaText: ad.ctaText || "Learn More",
+            ctaUrl: ad.ctaUrl,
+            category: ad.category,
+            likesCount: ad.impressions || 1420,
+            commentsCount: ad.clicks || 184,
+            sharesCount: 52,
+            animalName: ad.advertiserName,
+            animalUsername: `@${ad.advertiserName.toLowerCase().replace(/[^a-z0-9]/g, '')}`,
+            animalAvatar: ad.advertiserAvatar,
+            createdAt: ad.createdAt,
+          });
+        }
+      });
+
       res.setHeader("X-Total-Count", allPosts.length);
       res.setHeader("X-Page", page);
       res.setHeader("X-Has-More", String(hasMore));
 
-      res.json(paginatedPosts);
+      res.json(feedWithAds);
     } catch (err) {
       res.status(500).json({ error: "Failed to fetch feed" });
     }

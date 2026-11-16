@@ -48,7 +48,7 @@ export async function getDb(): Promise<DatabaseSchema> {
     const [
       usersRes, animalsRes, followsRes, postsRes, likesRes, commentsRes,
       productsRes, servicesRes, eventsRes, notificationsRes, messagesRes,
-      reportsRes, auditLogsRes
+      reportsRes, auditLogsRes, adsRes, soundsRes
     ] = await Promise.all([
       query("SELECT * FROM users ORDER BY created_at"),
       query("SELECT * FROM animals ORDER BY created_at"),
@@ -63,6 +63,8 @@ export async function getDb(): Promise<DatabaseSchema> {
       query("SELECT * FROM messages ORDER BY created_at"),
       query("SELECT * FROM reports ORDER BY created_at DESC"),
       query("SELECT * FROM audit_logs ORDER BY created_at DESC"),
+      query("SELECT * FROM ads ORDER BY created_at DESC"),
+      query("SELECT * FROM sounds ORDER BY created_at DESC"),
     ]);
 
   // Reconstruct the users dict
@@ -209,7 +211,33 @@ export async function getDb(): Promise<DatabaseSchema> {
     details: l.details, timestamp: l.timestamp,
   }));
 
-    inMemoryDb = { users, animals, follows, posts, likes, comments, products, services, events, notifications, messages, reports, auditLogs };
+  // Ads dict
+  const ads: DatabaseSchema["ads"] = {};
+  for (const a of adsRes.rows) {
+    ads[a.id] = {
+      id: a.id, title: a.title, advertiserName: a.advertiser_name,
+      advertiserAvatar: a.advertiser_avatar, adType: a.ad_type,
+      mediaUrl: a.media_url, caption: a.caption, category: a.category,
+      sponsorBadge: a.sponsor_badge, ctaText: a.cta_text, ctaUrl: a.cta_url,
+      status: a.status, targetType: a.target_type, targetId: a.target_id,
+      impressions: Number(a.impressions || 0), clicks: Number(a.clicks || 0),
+      createdAt: a.created_at,
+    };
+  }
+
+  // Sounds dict
+  const sounds: DatabaseSchema["sounds"] = {};
+  for (const s of soundsRes.rows) {
+    sounds[s.id] = {
+      id: s.id, title: s.title, artist: s.artist, duration: s.duration,
+      category: s.category, isPromoted: Boolean(s.is_promoted),
+      sponsorBadge: s.sponsor_badge, coverUrl: s.cover_url, previewUrl: s.preview_url,
+      usageCount: s.usage_count, externalUrl: s.external_url, status: s.status,
+      createdAt: s.created_at,
+    };
+  }
+
+  inMemoryDb = { users, animals, follows, posts, likes, comments, products, services, events, notifications, messages, reports, auditLogs, ads, sounds };
     inMemoryCachedAt = Date.now();
     return inMemoryDb;
   } catch (err) {
@@ -390,6 +418,41 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
     `, [l.id, l.adminName, l.action, l.details, l.timestamp]);
   }
 
+  // Upsert ads
+  for (const a of Object.values(data.ads || {})) {
+    await query(`
+      INSERT INTO ads (id, title, advertiser_name, advertiser_avatar, ad_type, media_url,
+        caption, category, sponsor_badge, cta_text, cta_url, status, target_type, target_id,
+        impressions, clicks, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+      ON CONFLICT (id) DO UPDATE SET
+        title=EXCLUDED.title, advertiser_name=EXCLUDED.advertiser_name,
+        advertiser_avatar=EXCLUDED.advertiser_avatar, ad_type=EXCLUDED.ad_type,
+        media_url=EXCLUDED.media_url, caption=EXCLUDED.caption, category=EXCLUDED.category,
+        sponsor_badge=EXCLUDED.sponsor_badge, cta_text=EXCLUDED.cta_text, cta_url=EXCLUDED.cta_url,
+        status=EXCLUDED.status, impressions=EXCLUDED.impressions, clicks=EXCLUDED.clicks
+    `, [a.id, a.title, a.advertiserName, a.advertiserAvatar, a.adType, a.mediaUrl,
+        a.caption, a.category, a.sponsorBadge, a.ctaText, a.ctaUrl, a.status,
+        a.targetType, a.targetId || null, a.impressions || 0, a.clicks || 0, a.createdAt]);
+  }
+
+  // Upsert sounds
+  for (const s of Object.values(data.sounds || {})) {
+    await query(`
+      INSERT INTO sounds (id, title, artist, duration, category, is_promoted, sponsor_badge,
+        cover_url, preview_url, usage_count, external_url, status, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+      ON CONFLICT (id) DO UPDATE SET
+        title=EXCLUDED.title, artist=EXCLUDED.artist, duration=EXCLUDED.duration,
+        category=EXCLUDED.category, is_promoted=EXCLUDED.is_promoted,
+        sponsor_badge=EXCLUDED.sponsor_badge, cover_url=EXCLUDED.cover_url,
+        preview_url=EXCLUDED.preview_url, usage_count=EXCLUDED.usage_count,
+        external_url=EXCLUDED.external_url, status=EXCLUDED.status
+    `, [s.id, s.title, s.artist, s.duration, s.category, s.isPromoted,
+        s.sponsorBadge, s.coverUrl, s.previewUrl, s.usageCount,
+        s.externalUrl || null, s.status, s.createdAt]);
+  }
+
   // Sync follows table from in-memory follows dict
   // (individual follow/unfollow ops are handled directly in the animals route)
   } catch (err) {
@@ -493,5 +556,26 @@ async function seedAll(data: DatabaseSchema) {
       INSERT INTO audit_logs (id, admin_name, action, details, timestamp)
       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (id) DO NOTHING
     `, [l.id, l.adminName, l.action, l.details, l.timestamp]);
+  }
+
+  for (const a of Object.values(data.ads || {})) {
+    await query(`
+      INSERT INTO ads (id, title, advertiser_name, advertiser_avatar, ad_type, media_url,
+        caption, category, sponsor_badge, cta_text, cta_url, status, target_type, target_id,
+        impressions, clicks, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) ON CONFLICT (id) DO NOTHING
+    `, [a.id, a.title, a.advertiserName, a.advertiserAvatar, a.adType, a.mediaUrl,
+        a.caption, a.category, a.sponsorBadge, a.ctaText, a.ctaUrl, a.status,
+        a.targetType, a.targetId || null, a.impressions || 0, a.clicks || 0, a.createdAt]);
+  }
+
+  for (const s of Object.values(data.sounds || {})) {
+    await query(`
+      INSERT INTO sounds (id, title, artist, duration, category, is_promoted, sponsor_badge,
+        cover_url, preview_url, usage_count, external_url, status, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (id) DO NOTHING
+    `, [s.id, s.title, s.artist, s.duration, s.category, s.isPromoted,
+        s.sponsorBadge, s.coverUrl, s.previewUrl, s.usageCount,
+        s.externalUrl || null, s.status, s.createdAt]);
   }
 }

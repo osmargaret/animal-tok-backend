@@ -252,5 +252,47 @@ export async function runMigrations() {
     )
   `);
 
+  // Ads & Promoted Campaigns table (Company ads, Vet/Hospital ads, User Promoted Posts/Services)
+  await query(`
+    CREATE TABLE IF NOT EXISTS ads (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      advertiser_name TEXT NOT NULL,
+      advertiser_avatar TEXT,
+      ad_type TEXT NOT NULL DEFAULT 'video',
+      media_url TEXT NOT NULL,
+      caption TEXT,
+      category TEXT,
+      sponsor_badge TEXT DEFAULT 'Sponsored',
+      cta_text TEXT DEFAULT 'Learn More',
+      cta_url TEXT,
+      status TEXT DEFAULT 'active',
+      target_type TEXT DEFAULT 'external',
+      target_id TEXT,
+      impressions INTEGER DEFAULT 0,
+      clicks INTEGER DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
+  // Promoted Sounds & Artist Tracks table
+  await query(`
+    CREATE TABLE IF NOT EXISTS sounds (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL,
+      artist TEXT NOT NULL,
+      duration TEXT DEFAULT '0:30',
+      category TEXT DEFAULT 'Promoted',
+      is_promoted BOOLEAN DEFAULT true,
+      sponsor_badge TEXT DEFAULT 'Artist Spotlight',
+      cover_url TEXT,
+      preview_url TEXT NOT NULL,
+      usage_count TEXT DEFAULT 'Active Track',
+      external_url TEXT,
+      status TEXT DEFAULT 'active',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   console.log("✅ Neon Postgres migrations complete.");
 }
