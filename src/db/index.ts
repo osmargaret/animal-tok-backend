@@ -22,10 +22,45 @@ async function ensureReady() {
 
 async function seedIfEmpty() {
   const { rows } = await query("SELECT COUNT(*) as count FROM users");
-  if (Number(rows[0].count) > 0) return; // already seeded
-  console.log("🌱 Seeding Neon database with initial data...");
-  await seedAll(initialDbData);
-  console.log("✅ Seed complete.");
+  if (Number(rows[0].count) === 0) {
+    console.log("🌱 Seeding Neon database with initial data...");
+    await seedAll(initialDbData);
+    console.log("✅ Seed complete.");
+    return;
+  }
+
+  // Seed sample Ads if ads table is empty
+  const adsCountRes = await query("SELECT COUNT(*) as count FROM ads");
+  if (Number(adsCountRes.rows[0].count) === 0 && initialDbData.ads) {
+    console.log("📢 Seeding initial ads into Neon database...");
+    for (const a of Object.values(initialDbData.ads)) {
+      await query(`
+        INSERT INTO ads (id, title, advertiser_name, advertiser_avatar, ad_type, media_url,
+          caption, category, sponsor_badge, cta_text, cta_url, status, target_type, target_id,
+          impressions, clicks, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+        ON CONFLICT (id) DO NOTHING
+      `, [a.id, a.title, a.advertiserName, a.advertiserAvatar, a.adType, a.mediaUrl,
+          a.caption, a.category, a.sponsorBadge, a.ctaText, a.ctaUrl, a.status,
+          a.targetType, a.targetId || null, a.impressions || 0, a.clicks || 0, a.createdAt]);
+    }
+  }
+
+  // Seed sample Sounds if sounds table is empty
+  const soundsCountRes = await query("SELECT COUNT(*) as count FROM sounds");
+  if (Number(soundsCountRes.rows[0].count) === 0 && initialDbData.sounds) {
+    console.log("🎵 Seeding initial sounds into Neon database...");
+    for (const s of Object.values(initialDbData.sounds)) {
+      await query(`
+        INSERT INTO sounds (id, title, artist, duration, category, is_promoted, sponsor_badge,
+          cover_url, preview_url, usage_count, external_url, status, created_at)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+        ON CONFLICT (id) DO NOTHING
+      `, [s.id, s.title, s.artist, s.duration, s.category, s.isPromoted,
+          s.sponsorBadge, s.coverUrl, s.previewUrl, s.usageCount,
+          s.externalUrl || null, s.status, s.createdAt]);
+    }
+  }
 }
 
 // ─── READ ─────────────────────────────────────────────────────────────────
