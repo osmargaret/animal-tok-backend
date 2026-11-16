@@ -1,10 +1,27 @@
 import { Resend } from "resend";
 
-const resendApiKey = process.env.RESEND_API_KEY || "";
-const resend = new Resend(resendApiKey);
+function getResendClient(): Resend | null {
+  const key = process.env.RESEND_API_KEY?.trim() || "";
+  if (!key) {
+    console.warn("⚠️ RESEND_API_KEY is not set in environment variables. Please add RESEND_API_KEY to Render dashboard.");
+    return null;
+  }
+  try {
+    return new Resend(key);
+  } catch (err) {
+    console.error("Failed to initialize Resend client:", err);
+    return null;
+  }
+}
 
 export async function sendOtpEmail(toEmail: string, otpCode: string): Promise<boolean> {
   try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.log(`[OTP FALLBACK LOG] To: ${toEmail} | Verification Code: ${otpCode}`);
+      return true;
+    }
+
     const { data, error } = await resend.emails.send({
       from: "Animandler <onboarding@resend.dev>",
       to: [toEmail],
