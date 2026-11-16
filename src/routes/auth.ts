@@ -27,8 +27,10 @@ authRouter.post("/register", async (req: Request, res: Response): Promise<any> =
     if (!name || !username || !email) {
       return res.status(400).json({ error: "Name, username, and email are required." });
     }
-    if (!password || password.length < 6) {
-      return res.status(400).json({ error: "Password must be at least 6 characters." });
+    const hasLetter = /[a-zA-Z]/.test(password || "");
+    const hasNumber = /[0-9]/.test(password || "");
+    if (!password || password.length < 6 || !hasLetter || !hasNumber) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long and contain both letters and numbers." });
     }
 
     const cleanUsername = username.trim().toLowerCase().replace(/^@/, "");
@@ -64,9 +66,7 @@ authRouter.post("/register", async (req: Request, res: Response): Promise<any> =
       name: name.trim(),
       username: `@${cleanUsername}`,
       email: cleanEmail,
-      avatar: resolvedAccountType === 'vet'
-        ? "https://images.unsplash.com/photo-1628015081036-0747ec8f077a?w=150&auto=format&fit=crop&q=80"
-        : "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?w=150&auto=format&fit=crop&q=80",
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=027A69&color=fff&size=200&bold=true`,
       bio: petBio || (resolvedAccountType === 'vet' ? `Licensed Veterinarian at ${clinicName || 'Animal Hospital'}` : `Handler of ${petName || 'pets'}`),
       role: resolvedRole,
       accountType: resolvedAccountType,
@@ -294,8 +294,10 @@ authRouter.post("/reset-password", async (req: Request, res: Response): Promise<
       return res.status(400).json({ error: "Email, OTP code, and new password are required." });
     }
 
-    if (newPassword.length < 6) {
-      return res.status(400).json({ error: "Password must be at least 6 characters long." });
+    const hasLetter = /[a-zA-Z]/.test(newPassword || "");
+    const hasNumber = /[0-9]/.test(newPassword || "");
+    if (!newPassword || newPassword.length < 6 || !hasLetter || !hasNumber) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long and contain both letters and numbers." });
     }
 
     // Verify OTP one more time
