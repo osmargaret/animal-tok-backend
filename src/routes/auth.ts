@@ -2,6 +2,8 @@ import { Router, Request, Response } from "express";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDb, saveDb } from "../db";
+import { query } from "../db/postgres";
+import { sendOtpEmail } from "../lib/email";
 import { User, AnimalProfile } from "../types";
 
 export const authRouter = Router();
@@ -203,5 +205,129 @@ authRouter.put("/me", async (req: Request, res: Response): Promise<any> => {
     return res.json({ success: true, user: safeUser });
   } catch (err) {
     return res.status(500).json({ error: "Failed to update profile" });
+  }
+});
+
+// Request Password Reset OTP
+authRouter.post("/forgot-password", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = (email || "").trim().toLowerCase();
+
+    if (!cleanEmail) {
+      return res.status(400).json({ error: "Email address is required." });
+    }
+
+    const db = await getDb();
+    const user = Object.values(db.users).find((u) => (u.email || "").toLowerCase() === cleanEmail);
+
+    if (!user) {
+      return res.status(404).json({ error: "No account found with this email address." });
+    }
+
+    // Generate 6-digit OTP
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const id = `otp_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Invalidate any existing unused OTPs for this email
+    await query("UPDATE password_resets SET used = true WHERE email = $1", [cleanEmail]);
+
+    // Store new OTP
+    await query(
+      "INSERT INTO password_resets (id, email, otp, expires_at, used) VALUES ($1, $2, $3, $4, false)",
+      [id, cleanEmail, otp, expiresAt.toISOString()]
+    );
+
+    // Send email via Resend
+    const sent = await sendOtpEmail(cleanEmail, otp);
+
+    if (!sent) {
+      console.warn("Resend email delivery had an issue, but OTP was stored for fallback.");
+    }
+
+    return res.json({
+      success: true,
+      message: `A 6-digit verification code has been sent to ${cleanEmail}.`
+    });
+  } catch (err: any) {
+    console.error("Forgot password error:", err);
+    return res.status(500).json({ error: err.message || "Failed to process password reset request." });
+  }
+});
+
+// Verify OTP
+authRouter.post("/verify-otp", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email, otp } = req.body;
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanOtp = (otp || "").trim();
+
+    if (!cleanEmail || !cleanOtp) {
+      return res.status(400).json({ error: "Email and OTP code are required." });
+    }
+
+    const { rows } = await query(
+      "SELECT * FROM password_resets WHERE email = $1 AND otp = $2 AND used = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1",
+      [cleanEmail, cleanOtp]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: "Invalid or expired verification code." });
+    }
+
+    return res.json({ success: true, message: "Code verified successfully." });
+  } catch (err: any) {
+    console.error("Verify OTP error:", err);
+    return res.status(500).json({ error: "Failed to verify code." });
+  }
+});
+
+// Reset Password with verified OTP
+authRouter.post("/reset-password", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email, otp, newPassword } = req.body;
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanOtp = (otp || "").trim();
+
+    if (!cleanEmail || !cleanOtp || !newPassword) {
+      return res.status(400).json({ error: "Email, OTP code, and new password are required." });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: "Password must be at least 6 characters long." });
+    }
+
+    // Verify OTP one more time
+    const { rows } = await query(
+      "SELECT * FROM password_resets WHERE email = $1 AND otp = $2 AND used = false AND expires_at > NOW() ORDER BY created_at DESC LIMIT 1",
+      [cleanEmail, cleanOtp]
+    );
+
+    if (rows.length === 0) {
+      return res.status(400).json({ error: "Invalid or expired verification code." });
+    }
+
+    // Mark OTP as used
+    await query("UPDATE password_resets SET used = true WHERE id = $1", [rows[0].id]);
+
+    // Hash new password
+    const newHash = await bcrypt.hash(newPassword, SALT_ROUNDS);
+
+    // Update in Neon Postgres
+    await query("UPDATE users SET password_hash = $1 WHERE LOWER(email) = $2", [newHash, cleanEmail]);
+
+    // Update in-memory DB and reset TTL
+    const db = await getDb();
+    const user = Object.values(db.users).find((u) => (u.email || "").toLowerCase() === cleanEmail);
+    if (user) {
+      (user as any).passwordHash = newHash;
+      await saveDb(db);
+    }
+
+    return res.json({ success: true, message: "Your password has been reset successfully! You can now log in." });
+  } catch (err: any) {
+    console.error("Reset password error:", err);
+    return res.status(500).json({ error: "Failed to reset password." });
   }
 });

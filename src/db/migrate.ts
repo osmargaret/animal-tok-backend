@@ -240,5 +240,17 @@ export async function runMigrations() {
     )
   `);
 
+  // Password resets / OTP table
+  await query(`
+    CREATE TABLE IF NOT EXISTS password_resets (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      otp TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      used BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   console.log("✅ Neon Postgres migrations complete.");
 }
