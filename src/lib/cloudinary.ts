@@ -13,13 +13,15 @@ cloudinary.config({
 export function uploadBufferToCloudinary(
   buffer: Buffer,
   folder = "animaltok",
-  resourceType: "auto" | "image" | "video" | "raw" = "auto"
+  resourceType: "auto" | "image" | "video" | "raw" = "auto",
+  publicId?: string
 ): Promise<UploadApiResponse> {
   return new Promise((resolve, reject) => {
     const uploadStream = cloudinary.uploader.upload_stream(
       {
         folder,
         resource_type: resourceType,
+        ...(publicId ? { public_id: publicId } : {}),
       },
       (error, result) => {
         if (error || !result) {
@@ -39,11 +41,13 @@ export function uploadBufferToCloudinary(
 export async function uploadUrlOrBase64ToCloudinary(
   source: string,
   folder = "animaltok",
-  resourceType: "auto" | "image" | "video" | "raw" = "auto"
+  resourceType: "auto" | "image" | "video" | "raw" = "auto",
+  publicId?: string
 ): Promise<UploadApiResponse> {
   return await cloudinary.uploader.upload(source, {
     folder,
     resource_type: resourceType,
+    ...(publicId ? { public_id: publicId } : {}),
   });
 }
 
