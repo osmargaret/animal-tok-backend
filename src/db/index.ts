@@ -30,10 +30,15 @@ async function seedIfEmpty() {
 
 // ─── READ ─────────────────────────────────────────────────────────────────
 
+// Cache with 60-second TTL to avoid hitting Neon on every read while still
+// reflecting writes within a minute after Render restarts or cross-instance writes.
 let inMemoryDb: DatabaseSchema | null = null;
+let inMemoryCachedAt: number = 0;
+const CACHE_TTL_MS = 60_000; // 60 seconds
 
 export async function getDb(): Promise<DatabaseSchema> {
-  if (inMemoryDb) {
+  const now = Date.now();
+  if (inMemoryDb && (now - inMemoryCachedAt) < CACHE_TTL_MS) {
     return inMemoryDb;
   }
 
@@ -205,6 +210,7 @@ export async function getDb(): Promise<DatabaseSchema> {
   }));
 
     inMemoryDb = { users, animals, follows, posts, likes, comments, products, services, events, notifications, messages, reports, auditLogs };
+    inMemoryCachedAt = Date.now();
     return inMemoryDb;
   } catch (err) {
     console.warn("Neon Postgres fetch failed, using memory/fallback:", err);
@@ -220,8 +226,9 @@ export async function getDb(): Promise<DatabaseSchema> {
 // saveDb reconstructs diffs and upserts changed rows.
 
 export async function saveDb(data: DatabaseSchema): Promise<void> {
-  // Sync in-memory cache immediately
+  // Update in-memory cache and reset its timestamp so next read is fresh from Neon
   inMemoryDb = data;
+  inMemoryCachedAt = 0; // force refresh on next getDb() call
 
   try {
     await ensureReady();
