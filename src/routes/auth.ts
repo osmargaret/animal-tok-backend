@@ -242,13 +242,14 @@ authRouter.post("/forgot-password", async (req: Request, res: Response): Promise
     // Send email via Resend
     const sent = await sendOtpEmail(cleanEmail, otp);
 
-    if (!sent) {
-      console.warn("Resend email delivery had an issue, but OTP was stored for fallback.");
-    }
-
     return res.json({
       success: true,
-      message: `A 6-digit verification code has been sent to ${cleanEmail}.`
+      sent,
+      // Fallback OTP provided if Resend test domain blocks external recipients
+      otp: !sent ? otp : undefined,
+      message: sent
+        ? `A 6-digit verification code has been sent to ${cleanEmail}.`
+        : `A 6-digit verification code has been created for ${cleanEmail}.`
     });
   } catch (err: any) {
     console.error("Forgot password error:", err);

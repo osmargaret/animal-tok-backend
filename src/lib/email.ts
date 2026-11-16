@@ -19,10 +19,10 @@ export async function sendOtpEmail(toEmail: string, otpCode: string): Promise<bo
     const resend = getResendClient();
     if (!resend) {
       console.log(`[OTP FALLBACK LOG] To: ${toEmail} | Verification Code: ${otpCode}`);
-      return true;
+      return false;
     }
 
-    const { data, error } = await resend.emails.send({
+    const sendPromise = resend.emails.send({
       from: "Animandler <onboarding@resend.dev>",
       to: [toEmail],
       subject: `Animandler Password Reset Code: ${otpCode}`,
@@ -42,13 +42,20 @@ export async function sendOtpEmail(toEmail: string, otpCode: string): Promise<bo
       `,
     });
 
+    // 4-second timeout to prevent hanging when external email API is slow or rejects domain
+    const timeoutPromise = new Promise<{ data: null; error: any }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: { message: "Resend timeout" } }), 4000)
+    );
+
+    const { error } = await Promise.race([sendPromise, timeoutPromise]);
+
     if (error) {
-      console.error("Resend sendOtpEmail error:", error);
+      console.warn("Resend sendOtpEmail notice:", error?.message || error);
       return false;
     }
     return true;
   } catch (err) {
-    console.error("sendOtpEmail exception:", err);
+    console.warn("sendOtpEmail exception:", err);
     return false;
   }
 }
