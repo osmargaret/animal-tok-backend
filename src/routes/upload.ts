@@ -12,10 +12,10 @@ if (!fs.existsSync(uploadsDir)) {
 }
 
 /**
- * WhatsApp naming convention for Animandler media:
- * Images: ANIMANDLER-IMG-YYYYMMDD-WA0001.jpg
- * Videos: ANIMANDLER-VID-YYYYMMDD-WA0001.mp4
- * Audio:  ANIMANDLER-AUD-YYYYMMDD-WA0001.mp3
+ * Animandler media naming convention:
+ * Images: ANIMANDLER-IMG-YYYYMMDD-0001.jpg
+ * Videos: ANIMANDLER-VID-YYYYMMDD-0001.mp4
+ * Audio:  ANIMANDLER-AUD-YYYYMMDD-0001.mp3
  */
 export function generateWhatsAppMediaName(
   resourceType: string = "auto",
@@ -28,7 +28,7 @@ export function generateWhatsAppMediaName(
   const day = String(now.getDate()).padStart(2, "0");
   const dateStr = `${year}${month}${day}`;
 
-  // 4-digit sequential/random number like WA0001, WA5829
+  // 4-digit sequential/random number like 0001, 5829
   const seqNum = String(Math.floor(1000 + Math.random() * 9000));
 
   const isVideo =
@@ -55,7 +55,7 @@ export function generateWhatsAppMediaName(
     ext = originalName ? path.extname(originalName) || ".jpg" : ".jpg";
   }
 
-  const publicId = `ANIMANDLER-${typePrefix}-${dateStr}-WA${seqNum}`;
+  const publicId = `ANIMANDLER-${typePrefix}-${dateStr}-${seqNum}`;
   return {
     publicId,
     filename: `${publicId}${ext}`,
