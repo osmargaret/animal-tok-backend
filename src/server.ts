@@ -19,6 +19,7 @@ import { adminRouter } from "./routes/admin";
 import { uploadRouter } from "./routes/upload";
 import { paymentsRouter } from "./routes/payments";
 import { adsRouter, soundsRouter } from "./routes/ads";
+import { searchRouter } from "./routes/search";
 
 dotenv.config();
 
@@ -127,6 +128,7 @@ app.use("/api/ads", adsRouter);
 app.use("/api/sounds", soundsRouter);
 app.use("/api/upload", uploadRouter);
 app.use("/api/payments", paymentsRouter);
+app.use("/api/search", searchRouter);
 
 const PORT = process.env.PORT || 5000;
 server.listen(PORT, () => {
