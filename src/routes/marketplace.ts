@@ -124,7 +124,11 @@ marketplaceRouter.post("/services", async (req: Request, res: Response): Promise
       }
     }
 
-    const user = db.users[providerId || "u_1"];
+    const resolvedOwnerId =
+      providerId && db.animals?.[providerId]?.handlerId
+        ? db.animals[providerId].handlerId
+        : providerId;
+    const user = db.users[resolvedOwnerId || "u_1"];
     const serviceId = `srv_${Date.now()}`;
     const newService: Service = {
       id: serviceId,
@@ -135,7 +139,7 @@ marketplaceRouter.post("/services", async (req: Request, res: Response): Promise
       rating: 5.0,
       reviewsCount: 1,
       description: description || "Professional pet service.",
-      providerId: user ? user.id : (providerId || "u_1"),
+      providerId: providerId || (user ? user.id : "u_1"),
       providerName: user ? (user.clinicName || user.businessName || user.name) : "Verified Provider",
       providerAvatar: user ? user.avatar : "🐾",
       location: location || "Austin, TX",

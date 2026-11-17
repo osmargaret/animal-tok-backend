@@ -102,6 +102,17 @@ export function createMessagesRouter(io: Server) {
           } else {
             otherUserAvatar = "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=400&fit=crop";
           }
+        } else if (!otherUserName && threadId.startsWith("event_")) {
+          const eventKey = threadId.replace(/^event_/, "").split("_")[0];
+          const evt = db.events?.[eventKey];
+          if (evt) {
+            otherUserId = evt.organizerId || otherUserId;
+            otherUserName = evt.organizerName || "Event Host";
+            otherUserAvatar = evt.image || "";
+          } else {
+            otherUserName = "Event Host";
+            otherUserAvatar = "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=400&fit=crop";
+          }
         } else if (
           !otherUserName &&
           (threadId.startsWith("t_animal_") || threadId.startsWith("animal_") || db.animals[threadId])
@@ -170,6 +181,8 @@ export function createMessagesRouter(io: Server) {
         senderAvatar,
         recipientName,
         recipientAvatar,
+        eventId,
+        serviceId,
       } = req.body;
       const db = await getDb();
 
@@ -177,6 +190,37 @@ export function createMessagesRouter(io: Server) {
         return res.status(400).json({ error: "threadId, senderId and text are required" });
       }
 
+      // Resolve creator user account even if an animal profile ID or event/service reference was passed
+      let resolvedRecipientId = typeof recipientId === "string" ? recipientId.trim() : "";
+      const linkedEvent = eventId ? db.events?.[String(eventId)] : undefined;
+      const linkedService = serviceId ? db.services?.[String(serviceId)] : undefined;
+
+      if ((!resolvedRecipientId || !db.users[resolvedRecipientId]) && linkedEvent?.organizerId) {
+        resolvedRecipientId = linkedEvent.organizerId;
+      }
+      if ((!resolvedRecipientId || !db.users[resolvedRecipientId]) && linkedService?.providerId) {
+        resolvedRecipientId = linkedService.providerId;
+      }
+      if (resolvedRecipientId && db.animals?.[resolvedRecipientId]?.handlerId) {
+        resolvedRecipientId = db.animals[resolvedRecipientId].handlerId;
+      }
+      const lookupName = String(
+        recipientName || linkedEvent?.organizerName || linkedService?.providerName || ""
+      )
+        .toLowerCase()
+        .trim();
+      if ((!resolvedRecipientId || !db.users[resolvedRecipientId]) && lookupName) {
+        const matchedUser = Object.values(db.users || {}).find((u) =>
+          [u.name, u.businessName, u.clinicName].some(
+            (n) => n && n.toLowerCase().trim() === lookupName
+          )
+        );
+        if (matchedUser) {
+          resolvedRecipientId = matchedUser.id;
+        }
+      }
+
+      const finalRecipientId = resolvedRecipientId || undefined;
       const user = db.users[senderId] || { id: senderId, name: senderName || "User", avatar: senderAvatar || "👤" };
 
       const finalSenderId = user.id || senderId;
@@ -188,7 +232,7 @@ export function createMessagesRouter(io: Server) {
         id: messageId,
         threadId,
         senderId: finalSenderId,
-        recipientId: recipientId || undefined,
+        recipientId: finalRecipientId,
         recipientName: recipientName || undefined,
         recipientAvatar: recipientAvatar || undefined,
         senderName: finalSenderName,
@@ -201,9 +245,9 @@ export function createMessagesRouter(io: Server) {
       db.messages[threadId].push(newMessage);
 
       if (!db.threadMeta) db.threadMeta = {};
-      if (recipientName || recipientAvatar || recipientId) {
+      if (recipientName || recipientAvatar || finalRecipientId) {
         db.threadMeta[threadId] = {
-          recipientId: recipientId || db.threadMeta[threadId]?.recipientId,
+          recipientId: finalRecipientId || db.threadMeta[threadId]?.recipientId,
           recipientName: recipientName || db.threadMeta[threadId]?.recipientName,
           recipientAvatar: recipientAvatar || db.threadMeta[threadId]?.recipientAvatar,
         };
@@ -211,10 +255,10 @@ export function createMessagesRouter(io: Server) {
 
       // Create a notification for the recipient if recipientId exists and is different from sender
       let notif: NotificationItem | null = null;
-      if (recipientId && recipientId !== finalSenderId) {
+      if (finalRecipientId && finalRecipientId !== finalSenderId) {
         notif = {
           id: `n_${Date.now()}`,
-          userId: recipientId,
+          userId: finalRecipientId,
           type: "message",
           title: `Message from ${finalSenderName}`,
           message: text.length > 50 ? `${text.slice(0, 47)}...` : text,
@@ -223,32 +267,32 @@ export function createMessagesRouter(io: Server) {
           threadId,
         };
 
-        if (!db.notifications[recipientId]) db.notifications[recipientId] = [];
-        db.notifications[recipientId].unshift(notif);
+        if (!db.notifications[finalRecipientId]) db.notifications[finalRecipientId] = [];
+        db.notifications[finalRecipientId].unshift(notif);
       }
 
       // Realtime emit to thread room immediately (for viewers in this chat screen)
       io.to(`thread_${threadId}`).emit("new_message", newMessage);
 
       // Realtime emit to recipient's personal room immediately (for inbox badges / active alert)
-      if (recipientId) {
-        io.to(`user_${recipientId}`).emit("new_message_alert", {
+      if (finalRecipientId) {
+        io.to(`user_${finalRecipientId}`).emit("new_message_alert", {
           threadId,
           message: newMessage,
         });
 
         if (notif) {
-          io.to(`user_${recipientId}`).emit("new_notification", notif);
+          io.to(`user_${finalRecipientId}`).emit("new_notification", notif);
         }
 
         // Send background push notification if recipient has registered a device push token
-        const recipientUser = db.users[recipientId];
+        const recipientUser = db.users[finalRecipientId];
         if (recipientUser?.pushToken) {
           sendExpoPushNotification(
             recipientUser.pushToken,
             `🐾 Message from ${finalSenderName}`,
             text.length > 80 ? `${text.slice(0, 77)}...` : text,
-            { threadId, recipientId, senderId: finalSenderId }
+            { threadId, recipientId: finalRecipientId, senderId: finalSenderId }
           ).catch((e) => console.warn("Failed background push:", e));
         }
       }

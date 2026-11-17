@@ -55,7 +55,11 @@ eventsRouter.post("/", async (req: Request, res: Response): Promise<any> => {
       }
     }
 
-    const user = db.users[organizerId || "u_1"];
+    const resolvedHandlerId =
+      organizerId && db.animals?.[organizerId]?.handlerId
+        ? db.animals[organizerId].handlerId
+        : organizerId;
+    const user = db.users[resolvedHandlerId || "u_1"];
     const eventId = `evt_${Date.now()}`;
 
     const numericPrice = typeof ticketPrice === "number"
