@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDb, saveDb } from "../db";
 import { query } from "../db/postgres";
-import { sendOtpEmail } from "../lib/email";
+import { sendOtpEmail, sendWelcomeEmail } from "../lib/email";
 import { User, AnimalProfile } from "../types";
 
 export const authRouter = Router();
@@ -106,6 +106,15 @@ authRouter.post("/register", async (req: Request, res: Response): Promise<any> =
 
     db.users[userId] = newUser as User;
     await saveDb(db);
+
+    // Dispatch warm membership welcome email asynchronously (non-blocking)
+    sendWelcomeEmail({
+      toEmail: cleanEmail,
+      name: name.trim(),
+      username: `@${cleanUsername}`,
+      accountType: resolvedAccountType,
+      petName: petName?.trim(),
+    }).catch((e) => console.warn("Welcome email async notice:", e));
 
     const token = signToken(userId);
     // Don't expose passwordHash in response
