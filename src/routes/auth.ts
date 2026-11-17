@@ -3,7 +3,7 @@ import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { getDb, saveDb } from "../db";
 import { query } from "../db/postgres";
-import { sendOtpEmail, sendWelcomeEmail } from "../lib/email";
+import { sendOtpEmail, sendWelcomeEmail, sendRegistrationOtpEmail } from "../lib/email";
 import { User, AnimalProfile } from "../types";
 
 export const authRouter = Router();
@@ -15,7 +15,26 @@ function signToken(userId: string): string {
   return jwt.sign({ userId }, JWT_SECRET, { expiresIn: "30d" });
 }
 
-// Register new user & optional animal
+interface PendingRegistration {
+  name: string;
+  username: string;
+  email: string;
+  passwordHash: string;
+  accountType: 'handler' | 'vet' | 'business';
+  clinicName?: string;
+  specialization?: string;
+  petName?: string;
+  petBreed?: string;
+  petAge?: string;
+  petBio?: string;
+  otp: string;
+  expiresAt: number;
+}
+
+// In-memory cache for fast lookups (also backed by Postgres table registration_verifications)
+const pendingRegistrations = new Map<string, PendingRegistration>();
+
+// 1. Initiate Registration -> Validate & Send 6-digit Email Verification OTP
 authRouter.post("/register", async (req: Request, res: Response): Promise<any> => {
   try {
     const {
@@ -37,8 +56,6 @@ authRouter.post("/register", async (req: Request, res: Response): Promise<any> =
     const cleanEmail = email.trim().toLowerCase();
     const resolvedAccountType: 'handler' | 'vet' | 'business' =
       accountType === 'vet' ? 'vet' : accountType === 'business' ? 'business' : 'handler';
-    const resolvedRole: 'user' | 'vet' | 'business' =
-      resolvedAccountType === 'vet' ? 'vet' : resolvedAccountType === 'business' ? 'business' : 'user';
 
     const db = await getDb();
 
@@ -47,53 +64,137 @@ authRouter.post("/register", async (req: Request, res: Response): Promise<any> =
       (u) => u.email?.toLowerCase() === cleanEmail || u.username?.toLowerCase().replace(/^@/, "") === cleanUsername
     );
     if (existing) {
-      // If the account exists but was created without a password (old flow), update it
-      if (!(existing as any).passwordHash && password) {
-        const hash = await bcrypt.hash(password, SALT_ROUNDS);
-        (existing as any).passwordHash = hash;
-        await saveDb(db);
-      }
-      const token = signToken(existing.id);
-      const firstAnimal = existing.animals && existing.animals[0] ? db.animals[existing.animals[0]] : null;
-      return res.status(200).json({ user: existing, animal: firstAnimal, token, message: "Welcome back!" });
+      return res.status(400).json({ error: "An account with this email or username already exists. Please log in." });
     }
 
     const passwordHash = await bcrypt.hash(password, SALT_ROUNDS);
-    const userId = `u_${Date.now()}`;
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 15 * 60 * 1000; // 15 minutes validity
 
-    const newUser: User & { passwordHash?: string } = {
-      id: userId,
+    const pendingData: PendingRegistration = {
       name: name.trim(),
-      username: `@${cleanUsername}`,
+      username: cleanUsername,
       email: cleanEmail,
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name.trim())}&background=027A69&color=fff&size=200&bold=true`,
-      bio: petBio || (resolvedAccountType === 'vet' ? `Licensed Veterinarian at ${clinicName || 'Animal Hospital'}` : `Handler of ${petName || 'pets'}`),
-      role: resolvedRole,
+      passwordHash,
       accountType: resolvedAccountType,
       clinicName: clinicName?.trim(),
       specialization: specialization?.trim(),
+      petName: petName?.trim(),
+      petBreed: petBreed?.trim(),
+      petAge: petAge?.trim(),
+      petBio: petBio?.trim(),
+      otp,
+      expiresAt,
+    };
+
+    pendingRegistrations.set(cleanEmail, pendingData);
+
+    // Persist to PostgreSQL registration_verifications table
+    try {
+      await query(`
+        INSERT INTO registration_verifications (email, otp, payload, expires_at)
+        VALUES ($1, $2, $3, $4)
+        ON CONFLICT (email) DO UPDATE SET
+          otp = EXCLUDED.otp,
+          payload = EXCLUDED.payload,
+          expires_at = EXCLUDED.expires_at,
+          created_at = NOW()
+      `, [cleanEmail, otp, JSON.stringify(pendingData), new Date(expiresAt).toISOString()]);
+    } catch (dbErr) {
+      console.warn("Could not write to registration_verifications DB table:", dbErr);
+    }
+
+    // Dispatch 6-digit verification code email via Resend
+    const sent = await sendRegistrationOtpEmail(cleanEmail, name.trim(), otp);
+
+    res.status(200).json({
+      success: true,
+      requiresOtp: true,
+      email: cleanEmail,
+      message: `A 6-digit verification code has been sent to ${cleanEmail}. Please enter it to complete registration.`,
+      otp: !sent ? otp : undefined, // fallback OTP provided if email service runs in sandbox
+    });
+  } catch (err: any) {
+    console.error("Registration error:", err);
+    res.status(500).json({ error: err.message || "Registration failed." });
+  }
+});
+
+// 2. Verify Registration OTP & Complete Account Creation
+authRouter.post("/verify-registration", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email, otp } = req.body;
+    const cleanEmail = (email || "").trim().toLowerCase();
+    const cleanOtp = (otp || "").trim();
+
+    if (!cleanEmail || !cleanOtp) {
+      return res.status(400).json({ error: "Email address and 6-digit verification code are required." });
+    }
+
+    let pending = pendingRegistrations.get(cleanEmail);
+
+    // If not in memory or expired, check PostgreSQL
+    if (!pending || pending.otp !== cleanOtp || pending.expiresAt < Date.now()) {
+      try {
+        const result = await query(
+          "SELECT * FROM registration_verifications WHERE LOWER(email) = $1 AND otp = $2 AND expires_at > NOW()",
+          [cleanEmail, cleanOtp]
+        );
+        if (result.rows && result.rows.length > 0) {
+          const row = result.rows[0];
+          pending = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload;
+        }
+      } catch (err) {
+        console.warn("Error querying registration_verifications:", err);
+      }
+    }
+
+    if (!pending || pending.otp !== cleanOtp) {
+      return res.status(400).json({ error: "Invalid or expired verification code. Please check your email or request a new code." });
+    }
+
+    if (pending.expiresAt < Date.now()) {
+      return res.status(400).json({ error: "Verification code has expired. Please request a new code." });
+    }
+
+    const db = await getDb();
+    const userId = `u_${Date.now()}`;
+    const resolvedRole: 'user' | 'vet' | 'business' =
+      pending.accountType === 'vet' ? 'vet' : pending.accountType === 'business' ? 'business' : 'user';
+
+    const newUser: User & { passwordHash?: string } = {
+      id: userId,
+      name: pending.name,
+      username: `@${pending.username}`,
+      email: cleanEmail,
+      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(pending.name)}&background=027A69&color=fff&size=200&bold=true`,
+      bio: pending.petBio || (pending.accountType === 'vet' ? `Licensed Veterinarian at ${pending.clinicName || 'Animal Hospital'}` : `Handler of ${pending.petName || 'pets'}`),
+      role: resolvedRole,
+      accountType: pending.accountType,
+      clinicName: pending.clinicName,
+      specialization: pending.specialization,
       status: "active",
       subscriptionPlan: "free",
       animals: [],
       createdAt: new Date().toISOString(),
-      passwordHash,
+      passwordHash: pending.passwordHash,
     };
 
     let newAnimal: AnimalProfile | null = null;
-    if (petName) {
+    if (pending.petName) {
       const animalId = `a_${Date.now()}`;
       newAnimal = {
         id: animalId,
-        name: petName.trim(),
-        username: `@${petName.toLowerCase().replace(/\s+/g, '')}.pet`,
+        name: pending.petName,
+        username: `@${pending.petName.toLowerCase().replace(/\s+/g, '')}.pet`,
         avatar: "🐾",
         coverImage: "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=800&auto=format&fit=crop&q=80",
-        breed: petBreed || "Mixed Breed",
-        age: petAge || "1 yr",
+        breed: pending.petBreed || "Mixed Breed",
+        age: pending.petAge || "1 yr",
         location: "United States",
-        bio: petBio || `Hello from ${petName}! 🐾`,
+        bio: pending.petBio || `Hello from ${pending.petName}! 🐾`,
         handlerId: userId,
-        handlerName: name,
+        handlerName: pending.name,
         followersCount: 0,
         followingCount: 0,
         photos: ["https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=500&auto=format&fit=crop&q=80"],
@@ -107,22 +208,81 @@ authRouter.post("/register", async (req: Request, res: Response): Promise<any> =
     db.users[userId] = newUser as User;
     await saveDb(db);
 
+    // Clean up verification entry
+    pendingRegistrations.delete(cleanEmail);
+    query("DELETE FROM registration_verifications WHERE LOWER(email) = $1", [cleanEmail]).catch(() => {});
+
     // Dispatch warm membership welcome email asynchronously (non-blocking)
     sendWelcomeEmail({
       toEmail: cleanEmail,
-      name: name.trim(),
-      username: `@${cleanUsername}`,
-      accountType: resolvedAccountType,
-      petName: petName?.trim(),
+      name: pending.name,
+      username: `@${pending.username}`,
+      accountType: pending.accountType,
+      petName: pending.petName,
     }).catch((e) => console.warn("Welcome email async notice:", e));
 
     const token = signToken(userId);
-    // Don't expose passwordHash in response
     const { passwordHash: _ph, ...safeUser } = newUser as any;
-    res.status(201).json({ user: safeUser, animal: newAnimal, token });
+    res.status(201).json({
+      success: true,
+      user: safeUser,
+      animal: newAnimal,
+      token,
+      message: "Email verified successfully! Welcome to Animandler. 🐾"
+    });
   } catch (err: any) {
-    console.error("Registration error:", err);
-    res.status(500).json({ error: err.message || "Registration failed." });
+    console.error("verify-registration error:", err);
+    res.status(500).json({ error: err.message || "Registration verification failed." });
+  }
+});
+
+// 3. Resend Registration OTP Code
+authRouter.post("/resend-registration-otp", async (req: Request, res: Response): Promise<any> => {
+  try {
+    const { email } = req.body;
+    const cleanEmail = (email || "").trim().toLowerCase();
+    if (!cleanEmail) {
+      return res.status(400).json({ error: "Email address is required." });
+    }
+
+    let pending = pendingRegistrations.get(cleanEmail);
+    if (!pending) {
+      try {
+        const result = await query(
+          "SELECT * FROM registration_verifications WHERE LOWER(email) = $1 AND expires_at > NOW()",
+          [cleanEmail]
+        );
+        if (result.rows && result.rows.length > 0) {
+          const row = result.rows[0];
+          pending = typeof row.payload === "string" ? JSON.parse(row.payload) : row.payload;
+        }
+      } catch (err) {}
+    }
+
+    if (!pending) {
+      return res.status(404).json({ error: "No pending registration found for this email. Please sign up again." });
+    }
+
+    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 15 * 60 * 1000;
+    pending.otp = newOtp;
+    pending.expiresAt = expiresAt;
+    pendingRegistrations.set(cleanEmail, pending);
+
+    query(
+      "UPDATE registration_verifications SET otp = $1, expires_at = $2 WHERE LOWER(email) = $3",
+      [newOtp, new Date(expiresAt).toISOString(), cleanEmail]
+    ).catch(() => {});
+
+    const sent = await sendRegistrationOtpEmail(cleanEmail, pending.name, newOtp);
+
+    res.json({
+      success: true,
+      message: `A new verification code has been sent to ${cleanEmail}.`,
+      otp: !sent ? newOtp : undefined,
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message || "Failed to resend verification code." });
   }
 });
 

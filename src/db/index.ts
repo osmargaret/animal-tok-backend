@@ -147,6 +147,8 @@ export async function getDb(): Promise<DatabaseSchema> {
       likesCount: Number(p.likes_count), commentsCount: Number(p.comments_count),
       sharesCount: Number(p.shares_count), tags: p.tags || [],
       audioUrl: p.audio_url, audioName: p.audio_name, createdAt: p.created_at,
+      filterId: p.filter_id, filterName: p.filter_name, filterColor: p.filter_color,
+      filterOpacity: p.filter_opacity ? Number(p.filter_opacity) : undefined, filterCss: p.filter_css,
     };
   }
 
@@ -336,18 +338,22 @@ export async function saveDb(data: DatabaseSchema): Promise<void> {
     await query(`
       INSERT INTO posts (id, animal_id, animal_name, animal_avatar, animal_username,
         video_url, image_url, caption, likes_count, comments_count, shares_count, tags,
-        audio_url, audio_name, created_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+        audio_url, audio_name, filter_id, filter_name, filter_color, filter_opacity, filter_css, created_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
       ON CONFLICT (id) DO UPDATE SET
         animal_id=EXCLUDED.animal_id, animal_name=EXCLUDED.animal_name,
         animal_avatar=EXCLUDED.animal_avatar, animal_username=EXCLUDED.animal_username,
         caption=EXCLUDED.caption, likes_count=EXCLUDED.likes_count,
         comments_count=EXCLUDED.comments_count, shares_count=EXCLUDED.shares_count,
         tags=EXCLUDED.tags, video_url=EXCLUDED.video_url, image_url=EXCLUDED.image_url,
-        audio_url=EXCLUDED.audio_url, audio_name=EXCLUDED.audio_name
+        audio_url=EXCLUDED.audio_url, audio_name=EXCLUDED.audio_name,
+        filter_id=EXCLUDED.filter_id, filter_name=EXCLUDED.filter_name,
+        filter_color=EXCLUDED.filter_color, filter_opacity=EXCLUDED.filter_opacity,
+        filter_css=EXCLUDED.filter_css
     `, [p.id, p.animalId, p.animalName, p.animalAvatar, p.animalUsername,
         p.videoUrl, p.imageUrl, p.caption, p.likesCount, p.commentsCount, p.sharesCount,
-        p.tags, p.audioUrl, p.audioName, p.createdAt]);
+        p.tags, p.audioUrl, p.audioName, p.filterId || null, p.filterName || null,
+        p.filterColor || null, p.filterOpacity ?? null, p.filterCss || null, p.createdAt]);
   }
 
   // Upsert products

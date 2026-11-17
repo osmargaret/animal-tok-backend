@@ -179,6 +179,92 @@ export async function sendWelcomeEmail(params: WelcomeEmailParams): Promise<bool
   }
 }
 
+export async function sendRegistrationOtpEmail(toEmail: string, name: string, otpCode: string): Promise<boolean> {
+  try {
+    const resend = getResendClient();
+    if (!resend) {
+      console.log(`[REGISTRATION OTP LOG] To: ${toEmail} | Name: ${name} | Code: ${otpCode}`);
+      return false;
+    }
+
+    const fromAddress = process.env.EMAIL_FROM || "Animandler <onboarding@resend.dev>";
+    const sendPromise = resend.emails.send({
+      from: fromAddress,
+      to: [toEmail],
+      subject: `Animandler Email Verification Code: ${otpCode} 🐾`,
+      html: `
+        <!DOCTYPE html>
+        <html>
+        <head>
+          <meta charset="utf-8">
+          <meta name="viewport" content="width=device-width, initial-scale=1.0">
+          <title>Verify Your Email</title>
+        </head>
+        <body style="margin: 0; padding: 0; background-color: #080c14; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #f0f6fc;">
+          <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color: #080c14; padding: 40px 16px;">
+            <tr>
+              <td align="center">
+                <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width: 520px; background-color: #0d131f; border-radius: 16px; border: 1px solid rgba(255,255,255,0.08); overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.5);">
+                  <tr>
+                    <td style="padding: 32px 32px 20px 32px; background: linear-gradient(135deg, rgba(2, 122, 105, 0.25), rgba(6, 182, 212, 0.15)); border-bottom: 1px solid rgba(255,255,255,0.06); text-align: center;">
+                      <div style="display: inline-block; width: 52px; height: 52px; line-height: 52px; border-radius: 50%; background: linear-gradient(135deg, #027A69, #06b6d4); font-size: 26px; box-shadow: 0 4px 16px rgba(6, 182, 212, 0.4); margin-bottom: 10px;">🐾</div>
+                      <h1 style="margin: 0; font-size: 26px; font-weight: 800; color: #ffffff;">Anim<span style="color: #06b6d4;">andler</span></h1>
+                      <p style="margin: 4px 0 0 0; font-size: 13px; color: #94a3b8; font-weight: 600;">Email Address Verification</p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 32px 32px 24px 32px;">
+                      <h2 style="margin: 0 0 12px 0; font-size: 20px; font-weight: 700; color: #f1f5f9;">Hello ${name},</h2>
+                      <p style="margin: 0 0 20px 0; font-size: 15px; line-height: 1.6; color: #cbd5e1;">
+                        Thank you for joining <strong>Animandler</strong>! Please verify your email address to complete your registration and activate your account.
+                      </p>
+                      
+                      <p style="margin: 0 0 8px 0; font-size: 13px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; text-align: center;">Your 6-Digit Verification Code</p>
+                      <div style="text-align: center; margin: 12px 0 24px 0;">
+                        <span style="display: inline-block; font-size: 34px; font-weight: 800; letter-spacing: 10px; color: #ffffff; background: #162032; padding: 14px 28px; border-radius: 12px; border: 2px solid #06b6d4; box-shadow: 0 0 20px rgba(6, 182, 212, 0.25);">${otpCode}</span>
+                      </div>
+
+                      <p style="margin: 0 0 16px 0; font-size: 13px; line-height: 1.5; color: #94a3b8; text-align: center;">
+                        This code will expire in <strong>15 minutes</strong>. Enter it in the Animandler app to finish creating your account.
+                      </p>
+
+                      <p style="margin: 20px 0 0 0; font-size: 12px; line-height: 1.5; color: #64748b; text-align: center; border-top: 1px solid rgba(255,255,255,0.06); padding-top: 16px;">
+                        If you did not attempt to sign up for Animandler, you can safely ignore this email.
+                      </p>
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 16px 32px; background-color: #0a0e17; border-top: 1px solid rgba(255,255,255,0.06); text-align: center;">
+                      <p style="margin: 0; font-size: 11px; color: #475569;">
+                        Animandler.com • Lagos, Nigeria &amp; Worldwide Pet Community
+                      </p>
+                    </td>
+                  </tr>
+                </table>
+              </td>
+            </tr>
+          </table>
+        </body>
+        </html>
+      `,
+    });
+
+    const timeoutPromise = new Promise<{ data: null; error: any }>((resolve) =>
+      setTimeout(() => resolve({ data: null, error: { message: "Resend timeout" } }), 5000)
+    );
+
+    const { error } = await Promise.race([sendPromise, timeoutPromise]);
+    if (error) {
+      console.warn("Resend sendRegistrationOtpEmail notice:", error?.message || error);
+      return false;
+    }
+    return true;
+  } catch (err) {
+    console.warn("sendRegistrationOtpEmail exception:", err);
+    return false;
+  }
+}
+
 export async function sendOtpEmail(toEmail: string, otpCode: string): Promise<boolean> {
   try {
     const resend = getResendClient();

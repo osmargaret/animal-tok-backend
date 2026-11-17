@@ -100,7 +100,11 @@ export function createFeedRouter(io: Server) {
   // Create new Post
   router.post("/", async (req: Request, res: Response) => {
     try {
-      let { animalId, animalName, animalUsername, animalAvatar, caption, videoUrl, imageUrl, tags, audioUrl, audioName } = req.body;
+      let { 
+        animalId, animalName, animalUsername, animalAvatar, 
+        caption, videoUrl, imageUrl, tags, audioUrl, audioName,
+        filterId, filterName, filterColor, filterOpacity, filterCss 
+      } = req.body;
       const db = await getDb();
 
       const hostUrl = `${req.protocol}://${req.get("host")}`;
@@ -190,6 +194,11 @@ export function createFeedRouter(io: Server) {
         tags: tags || ["AnimalTok"],
         audioUrl,
         audioName,
+        filterId,
+        filterName,
+        filterColor,
+        filterOpacity: filterOpacity !== undefined ? Number(filterOpacity) : undefined,
+        filterCss,
         createdAt: new Date().toISOString()
       };
 

@@ -60,6 +60,11 @@ export interface Post {
   tags: string[];
   audioUrl?: string;
   audioName?: string;
+  filterId?: string;
+  filterName?: string;
+  filterColor?: string;
+  filterOpacity?: number;
+  filterCss?: string;
   isSuspended?: boolean;
   suspensionReason?: string;
   suspendedAt?: string;

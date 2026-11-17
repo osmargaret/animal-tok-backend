@@ -252,6 +252,17 @@ export async function runMigrations() {
     )
   `);
 
+  // Registration Email Verifications table
+  await query(`
+    CREATE TABLE IF NOT EXISTS registration_verifications (
+      email TEXT PRIMARY KEY,
+      otp TEXT NOT NULL,
+      payload JSONB NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+
   // Ads & Promoted Campaigns table (Company ads, Vet/Hospital ads, User Promoted Posts/Services)
   await query(`
     CREATE TABLE IF NOT EXISTS ads (
@@ -292,6 +303,15 @@ export async function runMigrations() {
       status TEXT DEFAULT 'active',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
+  `);
+
+  // Media filter columns on posts table
+  await query(`
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS filter_id TEXT;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS filter_name TEXT;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS filter_color TEXT;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS filter_opacity NUMERIC;
+    ALTER TABLE posts ADD COLUMN IF NOT EXISTS filter_css TEXT;
   `);
 
   console.log("✅ Neon Postgres migrations complete.");
