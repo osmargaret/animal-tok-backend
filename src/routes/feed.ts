@@ -38,9 +38,11 @@ export function createFeedRouter(io: Server) {
   router.get("/", async (req: Request, res: Response) => {
     try {
       const db = await getDb();
-      const allPosts = Object.values(db.posts).sort(
-        (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      );
+      const allPosts = Object.values(db.posts)
+        .filter((p: any) => !p.isSuspended)
+        .sort(
+          (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        );
 
       const page = Math.max(1, parseInt(req.query.page as string) || 1);
       const limit = Math.min(50, Math.max(1, parseInt(req.query.limit as string) || 10));

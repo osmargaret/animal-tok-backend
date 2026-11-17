@@ -164,6 +164,34 @@ adminRouter.delete("/posts/:id", async (req: Request, res: Response) => {
   }
 });
 
+// Suspend or Unsuspend post (Policy & Community Standards Moderation)
+adminRouter.post("/posts/:id/suspend", async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const { isSuspended, reason } = req.body;
+    const db = await getDb();
+    const post = db.posts[id];
+    if (!post) return res.status(404).json({ error: "Post not found" });
+
+    const newSuspendedState = isSuspended !== undefined ? Boolean(isSuspended) : !post.isSuspended;
+    post.isSuspended = newSuspendedState;
+    post.suspensionReason = newSuspendedState ? (reason || "Violation of Community Guidelines") : undefined;
+    post.suspendedAt = newSuspendedState ? new Date().toISOString() : undefined;
+
+    await saveDb(db);
+
+    await addAuditLog(
+      "System Admin",
+      newSuspendedState ? "Suspended Post (Policy Violation)" : "Unsuspended Post",
+      `Post ${id} (@${post.animalUsername}): ${post.suspensionReason || "Restored to active feed"}`
+    );
+
+    res.json({ success: true, post });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to toggle post suspension" });
+  }
+});
+
 // User Status Management (Ban / Suspend / Reinstate)
 adminRouter.post("/users/:id/status", async (req: Request, res: Response) => {
   try {
@@ -251,6 +279,198 @@ adminRouter.post("/marketplace/:type/:id/approval", async (req: Request, res: Re
     res.status(400).json({ error: "Invalid marketplace item type" });
   } catch (err) {
     res.status(500).json({ error: "Failed to set approval status" });
+  }
+});
+
+// Delete Marketplace Product
+adminRouter.delete("/products/:id", async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const db = await getDb();
+    if (!db.products || !db.products[id]) return res.status(404).json({ error: "Product not found" });
+
+    const title = db.products[id].title;
+    delete db.products[id];
+    await saveDb(db);
+
+    await addAuditLog("System Admin", "Deleted Marketplace Product", `Removed "${title}"`);
+    res.json({ success: true, message: "Product deleted" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete product" });
+  }
+});
+
+// Create Marketplace Product from Admin
+adminRouter.post("/products", async (req: Request, res: Response) => {
+  try {
+    const { title, price, category, image, description, inStock, sellerName } = req.body;
+    if (!title) return res.status(400).json({ error: "Product title is required." });
+
+    const db = await getDb();
+    const productId = `prod_${Date.now()}`;
+    const newProduct = {
+      id: productId,
+      title: title.trim(),
+      price: Number(price) || 19.99,
+      currency: "$",
+      category: category || "General",
+      image: image || "https://images.unsplash.com/photo-1545249390-6bdfa286032f?w=500&auto=format&fit=crop&q=80",
+      rating: 5.0,
+      reviewsCount: 1,
+      description: description || "Quality item verified by Animandler team.",
+      sellerId: "admin",
+      sellerName: sellerName || "Animandler Official Store",
+      sellerAvatar: "🛍️",
+      inStock: inStock !== undefined ? Boolean(inStock) : true,
+      tags: [category || "PetCare"],
+      approvalStatus: "approved" as const,
+    };
+
+    db.products[productId] = newProduct as any;
+    await saveDb(db);
+
+    await addAuditLog("System Admin", "Added Marketplace Product", `"${newProduct.title}" (${newProduct.price})`);
+    res.status(201).json({ success: true, product: newProduct });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create product" });
+  }
+});
+
+// Delete Service
+adminRouter.delete("/services/:id", async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const db = await getDb();
+    if (!db.services || !db.services[id]) return res.status(404).json({ error: "Service not found" });
+
+    const title = db.services[id].title;
+    delete db.services[id];
+    await saveDb(db);
+
+    await addAuditLog("System Admin", "Deleted Pet Care Service", `Removed "${title}"`);
+    res.json({ success: true, message: "Service deleted" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete service" });
+  }
+});
+
+// Create Service from Admin
+adminRouter.post("/services", async (req: Request, res: Response) => {
+  try {
+    const { title, category, price, providerName, location, description, contactEmail, image } = req.body;
+    if (!title) return res.status(400).json({ error: "Service title is required." });
+
+    const db = await getDb();
+    const serviceId = `srv_${Date.now()}`;
+    const newService = {
+      id: serviceId,
+      title: title.trim(),
+      providerId: "admin",
+      providerName: providerName || "Verified Pet Specialist",
+      providerAvatar: "🩺",
+      category: category || "Pet Care",
+      rating: 5.0,
+      reviewsCount: 1,
+      price: price || "$45/session",
+      image: image || "https://images.unsplash.com/photo-1516734212186-a967f81ad0d7?w=800&fit=crop",
+      description: description || "Professional animal care service.",
+      location: location || "Austin, TX & Virtual",
+      contactEmail: contactEmail || "care@animandler.app",
+      approvalStatus: "approved" as const,
+    };
+
+    db.services[serviceId] = newService as any;
+    await saveDb(db);
+
+    await addAuditLog("System Admin", "Added Pet Care Service", `"${newService.title}" by ${newService.providerName}`);
+    res.status(201).json({ success: true, service: newService });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create service" });
+  }
+});
+
+// ─── EVENTS MANAGEMENT ──────────────────────────────────────────────────
+
+// Create Event from Admin
+adminRouter.post("/events", async (req: Request, res: Response) => {
+  try {
+    const { title, date, time, location, category, petType, description, image, isPaid, ticketPrice, capacity } = req.body;
+    if (!title) return res.status(400).json({ error: "Event title is required." });
+
+    const db = await getDb();
+    const eventId = `evt_${Date.now()}`;
+    const numericPrice = parseFloat(String(ticketPrice || "0").replace(/[^0-9.]/g, "")) || 0;
+
+    const newEvent = {
+      id: eventId,
+      title: title.trim(),
+      date: date || "Upcoming Weekend",
+      time: time || "10:00 AM",
+      location: location || "Community Dog Park",
+      image: image || "https://images.unsplash.com/photo-1548767797-d8c844163c4c?w=600&fit=crop",
+      attendeesCount: 1,
+      category: category || "Meetup",
+      petType: petType || "all",
+      description: description || "Official Animandler community pet meetup!",
+      organizerId: "admin",
+      organizerName: "Animandler Official Host",
+      isAttending: true,
+      isPaid: Boolean(isPaid && numericPrice > 0),
+      ticketPrice: numericPrice > 0 ? `$${numericPrice.toFixed(2)}` : "Free",
+      currency: "$",
+      capacity: capacity ? Number(capacity) : 100,
+      ticketsSold: 0,
+      status: "upcoming" as const,
+    };
+
+    db.events[eventId] = newEvent as any;
+    await saveDb(db);
+
+    await addAuditLog("System Admin", "Created Pet Event", `"${newEvent.title}" (${newEvent.date})`);
+    res.status(201).json({ success: true, event: newEvent });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to create event" });
+  }
+});
+
+// Update Event
+adminRouter.put("/events/:id", async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const db = await getDb();
+    if (!db.events || !db.events[id]) return res.status(404).json({ error: "Event not found" });
+
+    const ev = db.events[id];
+    const allowed = ["title", "date", "time", "location", "category", "petType", "description", "image", "isPaid", "ticketPrice", "capacity", "status"];
+    for (const key of allowed) {
+      if (req.body[key] !== undefined) {
+        (ev as any)[key] = req.body[key];
+      }
+    }
+
+    await saveDb(db);
+    await addAuditLog("System Admin", "Updated Event", `Modified "${ev.title}"`);
+    res.json({ success: true, event: ev });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to update event" });
+  }
+});
+
+// Delete Event
+adminRouter.delete("/events/:id", async (req: Request, res: Response) => {
+  try {
+    const id = String(req.params.id);
+    const db = await getDb();
+    if (!db.events || !db.events[id]) return res.status(404).json({ error: "Event not found" });
+
+    const title = db.events[id].title;
+    delete db.events[id];
+    await saveDb(db);
+
+    await addAuditLog("System Admin", "Deleted Event", `Removed "${title}"`);
+    res.json({ success: true, message: "Event deleted" });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to delete event" });
   }
 });
 

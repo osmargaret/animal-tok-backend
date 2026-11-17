@@ -60,6 +60,9 @@ export interface Post {
   tags: string[];
   audioUrl?: string;
   audioName?: string;
+  isSuspended?: boolean;
+  suspensionReason?: string;
+  suspendedAt?: string;
   createdAt: string;
 }
 
